@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: org-service
+  datasource:
+    # Defaults match infra/docker-compose.yml; override with SPRING_DATASOURCE_* in other environments.
+    url: jdbc:postgresql://localhost:5433/org_db
+    username: org_service
+    password: org_service
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration
+
+server:
+  port: 8081
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
