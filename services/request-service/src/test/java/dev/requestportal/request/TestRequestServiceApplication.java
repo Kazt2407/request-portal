@@ -3,7 +3,8 @@ package dev.requestportal.request;
 import org.springframework.boot.SpringApplication;
 
 /**
- * Runs the service locally against a throwaway PostgreSQL container: {@code ./mvnw -pl services/request-service spring-boot:test-run}.
+ * Runs the service locally against a throwaway PostgreSQL container:
+ * {@code ./mvnw -pl services/request-service spring-boot:test-run}.
  */
 public class TestRequestServiceApplication {
 

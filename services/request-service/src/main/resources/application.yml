@@ -10,8 +10,19 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate.default_batch_fetch_size: 50
   flyway:
-    locations: classpath:db/migration
+    # db/dev-data holds sample templates; production sets SPRING_FLYWAY_LOCATIONS=classpath:db/migration.
+    locations: classpath:db/migration,classpath:db/dev-data
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+  jackson:
+    deserialization:
+      # Jackson 3 rejects omitted boolean flags by default; an omitted flag such as "required" means false.
+      fail-on-null-for-primitives: false
   security:
     oauth2:
       resourceserver:
@@ -19,6 +30,11 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/request-portal}
           jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/request-portal/protocol/openid-connect/certs
           audiences: request-portal-api
+
+portal:
+  org-service:
+    url: ${ORG_SERVICE_URL:http://localhost:8081}
+  time-zone: Asia/Ho_Chi_Minh
 
 server:
   port: 8082
