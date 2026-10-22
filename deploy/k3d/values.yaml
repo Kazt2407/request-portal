@@ -1,0 +1,61 @@
+# Helm values for the local k3d cluster (scripts/k3d-up.sh): locally built images and the docker compose
+# infrastructure on this machine. Credentials are the local development ones from infra/.
+image:
+  registry: request-portal
+  tag: dev
+  pullPolicy: Never
+
+infrastructure:
+  postgres:
+    host: host.k3d.internal
+    port: 5433
+  kafkaBootstrapServers: host.k3d.internal:9095
+  redis:
+    host: host.k3d.internal
+    port: 6380
+  keycloak:
+    url: http://host.k3d.internal:8180
+    issuerUri: http://localhost:8180/realms/request-portal
+  mail:
+    host: host.k3d.internal
+    port: 1025
+  portalUrl: http://localhost:5173
+
+# The optional observability stack: docker compose --profile observability up -d
+observability:
+  otlpEndpoint: http://host.k3d.internal:4318
+  samplingProbability: 1.0
+
+devData: true
+
+secrets:
+  values:
+    org-db-password: org_service
+    request-db-password: request_service
+    document-db-password: document_service
+    notification-db-password: notification_service
+    keycloak-admin-client-secret: org-service-dev-secret
+    notification-client-secret: notification-service-dev-secret
+
+# Smaller CPU requests to fit a laptop; one replica each by default, the autoscalers add more under load.
+defaults:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 384Mi
+    limits:
+      memory: 640Mi
+
+services:
+  gateway:
+    # The load test (load-test/) drives a few test users hard; keep their traffic under the limit.
+    rateLimit:
+      perSecond: 100
+      burst: 200
+    autoscaling:
+      minReplicas: 1
+      maxReplicas: 3
+  request-service:
+    autoscaling:
+      minReplicas: 1
+      maxReplicas: 3

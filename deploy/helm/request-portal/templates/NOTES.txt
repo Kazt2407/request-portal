@@ -1,0 +1,6 @@
+Request Portal {{ .Values.image.tag }} is deployed as release {{ .Release.Name }}.
+
+Watch the services start:
+  kubectl get pods -l app.kubernetes.io/part-of=request-portal -w
+
+The API is served by the gateway behind the ingress under /api.

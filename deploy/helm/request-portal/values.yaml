@@ -1,0 +1,106 @@
+# Defaults for a shared environment. deploy/k3d/values.yaml overrides them for the local k3d cluster.
+
+image:
+  # Each service's image is <registry>/<service>:<tag>, as published by CI.
+  registry: ghcr.io/kazt2407/request-portal
+  tag: latest
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Backing services. In AWS these are managed (RDS, MSK, ElastiCache, SES); see deploy/terraform.
+infrastructure:
+  postgres:
+    host: postgres
+    port: 5432
+  kafkaBootstrapServers: kafka:9092
+  redis:
+    host: redis
+    port: 6379
+  keycloak:
+    # Where services reach Keycloak (may be an internal address)...
+    url: http://keycloak:8080
+    # ...and the issuer printed in tokens, which is the public URL.
+    issuerUri: https://sso.example.edu/realms/request-portal
+  mail:
+    host: smtp
+    port: 25
+  # Public URL of the web app, used for links in emails.
+  portalUrl: https://portal.example.edu
+
+observability:
+  # OTLP/HTTP endpoint of an OpenTelemetry collector for traces and metrics; empty turns export off.
+  otlpEndpoint: ""
+  # Share of requests traced end to end.
+  samplingProbability: 0.1
+
+# Load the sample departments, terms and templates (development and demos only).
+devData: false
+
+# Credentials. For real environments set existingSecret to a Secret managed outside the chart (for
+# example by External Secrets from AWS Secrets Manager) with the same keys.
+secrets:
+  existingSecret: ""
+  values:
+    org-db-password: ""
+    request-db-password: ""
+    document-db-password: ""
+    notification-db-password: ""
+    keycloak-admin-client-secret: ""
+    notification-client-secret: ""
+
+# Settings every service shares; a service's own block overrides them.
+defaults:
+  replicas: 1
+  # Autoscalers compare usage with the CPU request, so it must reflect real needs: with a token request
+  # (say 100m) they would scale out at almost no load.
+  resources:
+    requests:
+      cpu: 500m
+      memory: 384Mi
+    limits:
+      memory: 640Mi
+  autoscaling:
+    enabled: false
+
+services:
+  gateway:
+    port: 8080
+    # Per user and route; beyond it the gateway answers 429.
+    rateLimit:
+      perSecond: 10
+      burst: 30
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCpuUtilization: 70
+  org-service:
+    port: 8081
+    database: org_db
+    databaseUser: org_service
+    databasePasswordKey: org-db-password
+  request-service:
+    port: 8082
+    database: request_db
+    databaseUser: request_service
+    databasePasswordKey: request-db-password
+    autoscaling:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 5
+      targetCpuUtilization: 70
+  document-service:
+    port: 8083
+    database: document_db
+    databaseUser: document_service
+    databasePasswordKey: document-db-password
+  notification-service:
+    port: 8084
+    database: notification_db
+    databaseUser: notification_service
+    databasePasswordKey: notification-db-password
+
+ingress:
+  enabled: true
+  className: ""
+  host: ""

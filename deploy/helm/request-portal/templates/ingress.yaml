@@ -1,0 +1,27 @@
+{{- if .Values.ingress.enabled }}
+{{- $ctx := dict "root" . "name" "gateway" }}
+# Only the gateway is exposed; the services are reachable inside the cluster only.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  {{- with .Values.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  rules:
+    - {{- with .Values.ingress.host }}
+      host: {{ . }}
+      {{- end }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "request-portal.serviceName" $ctx }}
+                port:
+                  name: http
+{{- end }}

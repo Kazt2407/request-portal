@@ -1,0 +1,6 @@
+apiVersion: v2
+name: request-portal
+description: Request Portal services (gateway, org, request, document, notification) on Kubernetes.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

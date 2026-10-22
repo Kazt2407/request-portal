@@ -1,0 +1,175 @@
+{{- $root := . }}
+{{- $infra := .Values.infrastructure }}
+{{- range $name, $own := .Values.services }}
+{{- $service := mergeOverwrite (deepCopy $root.Values.defaults) $own }}
+{{- $ctx := dict "root" $root "name" $name }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  {{- if not $service.autoscaling.enabled }}
+  replicas: {{ $service.replicas }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "request-portal.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "request-portal.labels" $ctx | nindent 8 }}
+    spec:
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $name }}
+          image: "{{ $root.Values.image.registry }}/{{ $name }}:{{ $root.Values.image.tag }}"
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $service.port }}
+          env:
+            - name: KEYCLOAK_URL
+              value: {{ $infra.keycloak.url | quote }}
+            - name: KEYCLOAK_ISSUER_URI
+              value: {{ $infra.keycloak.issuerUri | quote }}
+            - name: KAFKA_BOOTSTRAP_SERVERS
+              value: {{ $infra.kafkaBootstrapServers | quote }}
+            - name: TRACING_SAMPLING_PROBABILITY
+              value: {{ $root.Values.observability.samplingProbability | quote }}
+            {{- with $root.Values.observability.otlpEndpoint }}
+            - name: OTEL_EXPORT_ENABLED
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if $service.database }}
+            - name: SPRING_DATASOURCE_URL
+              value: "jdbc:postgresql://{{ $infra.postgres.host }}:{{ $infra.postgres.port }}/{{ $service.database }}"
+            - name: SPRING_DATASOURCE_USERNAME
+              value: {{ $service.databaseUser | quote }}
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "request-portal.secretName" $root }}
+                  key: {{ $service.databasePasswordKey }}
+            - name: SPRING_FLYWAY_LOCATIONS
+              value: {{ ternary "classpath:db/migration,classpath:db/dev-data" "classpath:db/migration" $root.Values.devData | quote }}
+            {{- end }}
+            {{- if eq $name "gateway" }}
+            - name: REDIS_HOST
+              value: {{ $infra.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ $infra.redis.port | quote }}
+            - name: RATE_LIMIT_PER_SECOND
+              value: {{ $service.rateLimit.perSecond | quote }}
+            - name: RATE_LIMIT_BURST
+              value: {{ $service.rateLimit.burst | quote }}
+            {{- range $target := list "org-service" "request-service" "document-service" "notification-service" }}
+            - name: {{ $target | upper | replace "-" "_" }}_URL
+              value: {{ include "request-portal.url" (dict "root" $root "name" $target) | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if has $name (list "request-service" "notification-service") }}
+            - name: ORG_SERVICE_URL
+              value: {{ include "request-portal.url" (dict "root" $root "name" "org-service") | quote }}
+            {{- end }}
+            {{- if eq $name "org-service" }}
+            - name: KEYCLOAK_ADMIN_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "request-portal.secretName" $root }}
+                  key: keycloak-admin-client-secret
+            {{- end }}
+            {{- if eq $name "notification-service" }}
+            - name: NOTIFICATION_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "request-portal.secretName" $root }}
+                  key: notification-client-secret
+            - name: MAIL_HOST
+              value: {{ $infra.mail.host | quote }}
+            - name: MAIL_PORT
+              value: {{ $infra.mail.port | quote }}
+            - name: PORTAL_URL
+              value: {{ $infra.portalUrl | quote }}
+            {{- end }}
+          # The JVM needs a while to start; liveness only takes over once the startup probe has passed.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml $service.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # The JVM, Tomcat and Netty write temporary files; everything else is read-only.
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "request-portal.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $service.port }}
+      targetPort: http
+{{- if $service.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "request-portal.serviceName" $ctx }}
+  minReplicas: {{ $service.autoscaling.minReplicas }}
+  maxReplicas: {{ $service.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $service.autoscaling.targetCpuUtilization }}
+{{- end }}
+{{- end }}
