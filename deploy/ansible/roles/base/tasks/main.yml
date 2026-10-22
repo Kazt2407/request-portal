@@ -1,0 +1,27 @@
+- name: Install the packages k3s and Helm need
+  ansible.builtin.apt:
+    name:
+      - curl
+      - ca-certificates
+      - tar
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Enable IP forwarding for pod networking
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+
+- name: Turn swap off now
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts["swaptotal_mb"] > 0
+  changed_when: true
+
+- name: Keep swap off after reboots
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1'

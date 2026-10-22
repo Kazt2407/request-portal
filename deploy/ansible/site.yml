@@ -1,0 +1,10 @@
+# A single-node Kubernetes (k3s) server with Rancher to manage it.
+#   ansible-galaxy collection install -r requirements.yml
+#   ansible-playbook site.yml --ask-vault-pass
+- name: Install k3s and Rancher
+  hosts: k3s_servers
+  become: true
+  roles:
+    - base
+    - k3s
+    - rancher

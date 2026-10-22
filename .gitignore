@@ -25,3 +25,9 @@ dist/
 .env
 *.log
 .DS_Store
+
+# Terraform working files (the provider lock file .terraform.lock.hcl is committed)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan

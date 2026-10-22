@@ -1,0 +1,4 @@
+inventory.ini
+kubeconfig-*.yaml
+collections/
+*.vault.yml
