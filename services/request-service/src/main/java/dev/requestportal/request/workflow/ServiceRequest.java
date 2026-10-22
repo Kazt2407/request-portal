@@ -15,6 +15,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.Version;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -26,8 +27,8 @@ import java.util.UUID;
 
 /**
  * A submitted request and its approval workflow. All state changes go through this aggregate, which
- * enforces the step order and records each change in the history; the {@code version} column turns
- * concurrent changes into a conflict instead of a lost update.
+ * enforces the step order, records each change in the history and collects {@link WorkflowEvent}s for the
+ * outbox; the {@code version} column turns concurrent changes into a conflict instead of a lost update.
  */
 @Entity
 @Table(name = "service_request")
@@ -95,6 +96,10 @@ public class ServiceRequest {
     @OrderBy("createdAt asc, id asc")
     private List<RequestHistoryEntry> history = new ArrayList<>();
 
+    /** Events since the last {@link #drainEvents()}; written to the outbox in the same transaction. */
+    @Transient
+    private final List<WorkflowEvent> pendingEvents = new ArrayList<>();
+
     protected ServiceRequest() {
     }
 
@@ -130,6 +135,10 @@ public class ServiceRequest {
         first.start(now);
         request.currentStep = first.getPosition();
         request.record(HistoryAction.SUBMITTED, null, requester, null, now);
+        int totalDays = request.steps.stream().mapToInt(RequestStep::getSlaDays).sum();
+        request.pendingEvents.add(new WorkflowEvent.RequestSubmitted(
+                request.steps.size(), template.isShowProcessingTime() ? totalDays : null, now));
+        request.started(first, now);
         return request;
     }
 
@@ -142,6 +151,7 @@ public class ServiceRequest {
         }
         step.complete(actor, note, attachmentIds, now);
         record(HistoryAction.STEP_COMPLETED, position, actor, note, now);
+        finished(step, now);
 
         Optional<RequestStep> next = steps.stream()
                 .filter(candidate -> candidate.getStatus() == StepStatus.PENDING)
@@ -149,9 +159,11 @@ public class ServiceRequest {
         if (next.isPresent()) {
             next.get().start(now);
             currentStep = next.get().getPosition();
+            started(next.get(), now);
         } else {
             finish(RequestStatus.COMPLETED, now);
             record(HistoryAction.COMPLETED, null, actor, null, now);
+            pendingEvents.add(new WorkflowEvent.RequestCompleted(step.getDepartmentCode(), now));
         }
         updatedAt = now;
     }
@@ -160,9 +172,11 @@ public class ServiceRequest {
     public void rejectStep(int position, Actor actor, String reason, Instant now) {
         RequestStep step = requireCurrentStep(position);
         step.reject(actor, reason, now);
+        finished(step, now);
         cancelOpenSteps(now);
         finish(RequestStatus.REJECTED, now);
         record(HistoryAction.STEP_REJECTED, position, actor, reason, now);
+        pendingEvents.add(new WorkflowEvent.RequestRejected(position, step.getDepartmentCode(), reason, now));
     }
 
     /** The requester withdraws the request, allowed only until a department has completed a step. */
@@ -175,6 +189,7 @@ public class ServiceRequest {
         cancelOpenSteps(now);
         finish(RequestStatus.CANCELLED, now);
         record(HistoryAction.CANCELLED, null, requester, null, now);
+        pendingEvents.add(new WorkflowEvent.RequestCancelled(now));
     }
 
     /** Whether the requester has collected the result of a completed request. Repeating a value is a no-op. */
@@ -189,6 +204,13 @@ public class ServiceRequest {
         resultReceived = received;
         updatedAt = now;
         record(received ? HistoryAction.RESULT_RECEIVED : HistoryAction.RESULT_NOT_RECEIVED, null, actor, null, now);
+    }
+
+    /** Returns and forgets the events recorded since the last call. */
+    public List<WorkflowEvent> drainEvents() {
+        List<WorkflowEvent> events = List.copyOf(pendingEvents);
+        pendingEvents.clear();
+        return events;
     }
 
     public Optional<RequestStep> step(int position) {
@@ -224,7 +246,22 @@ public class ServiceRequest {
     }
 
     private void cancelOpenSteps(Instant now) {
-        steps.stream().filter(RequestStep::isOpen).forEach(step -> step.cancel(now));
+        for (RequestStep step : steps) {
+            if (step.isOpen()) {
+                step.cancel(now);
+                finished(step, now);
+            }
+        }
+    }
+
+    private void started(RequestStep step, Instant now) {
+        pendingEvents.add(new WorkflowEvent.StepStarted(
+                step.getPosition(), step.getDepartmentCode(), step.getDescription(), step.getDueAt(), now));
+    }
+
+    private void finished(RequestStep step, Instant now) {
+        pendingEvents.add(new WorkflowEvent.StepFinished(
+                step.getPosition(), step.getDepartmentCode(), step.getStatus(), step.getFinishedBy(), step.getNote(), now));
     }
 
     private void finish(RequestStatus finalStatus, Instant now) {

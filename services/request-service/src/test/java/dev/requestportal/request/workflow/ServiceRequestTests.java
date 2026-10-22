@@ -126,6 +126,34 @@ class ServiceRequestTests {
         assertThat(request.step(2).orElseThrow().isOverdue(SUBMITTED.plus(Duration.ofDays(30)))).isFalse();
     }
 
+    @Test
+    void recordsEventsForEveryChange() {
+        ServiceRequest request = submit(false);
+        assertThat(request.drainEvents()).extracting(WorkflowEvent::type).containsExactly(
+                WorkflowEvent.Type.REQUEST_SUBMITTED, WorkflowEvent.Type.STEP_STARTED);
+        assertThat(request.drainEvents()).as("draining forgets the events").isEmpty();
+
+        request.completeStep(1, CLERK, "ok", List.of(), SUBMITTED);
+        List<WorkflowEvent> afterCompletion = request.drainEvents();
+        assertThat(afterCompletion).extracting(WorkflowEvent::type).containsExactly(
+                WorkflowEvent.Type.STEP_FINISHED, WorkflowEvent.Type.STEP_STARTED);
+        var finished = (WorkflowEvent.StepFinished) afterCompletion.getFirst();
+        assertThat(finished.status()).isEqualTo(StepStatus.COMPLETED);
+        assertThat(finished.finishedBy()).isEqualTo(CLERK);
+
+        request.rejectStep(2, CLERK, "Missing signature", SUBMITTED);
+        assertThat(request.drainEvents()).extracting(WorkflowEvent::type).containsExactly(
+                WorkflowEvent.Type.STEP_FINISHED, WorkflowEvent.Type.STEP_FINISHED, WorkflowEvent.Type.REQUEST_REJECTED);
+    }
+
+    @Test
+    void submittedEventShowsExpectedDaysOnlyWhenTheTemplateDoes() {
+        var submitted = (WorkflowEvent.RequestSubmitted) submit(false).drainEvents().getFirst();
+
+        assertThat(submitted.stepCount()).isEqualTo(3);
+        assertThat(submitted.expectedDays()).isEqualTo(4);
+    }
+
     private static ServiceRequest submit(boolean firstStepNeedsAttachment) {
         RequestTemplate template = new RequestTemplate(new TemplateRequest(
                 "Transcript", null, "ACAD", Audience.STUDENT, TemplateStatus.ACTIVE, true,

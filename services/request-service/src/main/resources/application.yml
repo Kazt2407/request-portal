@@ -23,6 +23,16 @@ spring:
     deserialization:
       # Jackson 3 rejects omitted boolean flags by default; an omitted flag such as "required" means false.
       fail-on-null-for-primitives: false
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
   security:
     oauth2:
       resourceserver:
@@ -32,6 +42,15 @@ spring:
           audiences: request-portal-api
 
 portal:
+  outbox:
+    topic: request-events
+    partitions: 3
+    replicas: 1
+    poll-interval: 500ms
+    batch-size: 100
+    send-timeout: 15s
+    retention: 7d
+    cleanup-cron: "0 15 3 * * *"
   org-service:
     url: ${ORG_SERVICE_URL:http://localhost:8081}
   time-zone: Asia/Ho_Chi_Minh

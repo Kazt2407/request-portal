@@ -35,6 +35,7 @@ public class SubmissionService {
     private final FieldValueValidator validator;
     private final RequestNumbers requestNumbers;
     private final IdempotencyKeys idempotencyKeys;
+    private final WorkflowEventSink events;
     private final RequestQueryService queries;
     private final TransactionTemplate transaction;
     private final Clock clock;
@@ -45,6 +46,7 @@ public class SubmissionService {
             FieldValueValidator validator,
             RequestNumbers requestNumbers,
             IdempotencyKeys idempotencyKeys,
+            WorkflowEventSink events,
             RequestQueryService queries,
             PlatformTransactionManager transactionManager,
             Clock clock) {
@@ -53,6 +55,7 @@ public class SubmissionService {
         this.validator = validator;
         this.requestNumbers = requestNumbers;
         this.idempotencyKeys = idempotencyKeys;
+        this.events = events;
         this.queries = queries;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -90,6 +93,7 @@ public class SubmissionService {
                 values,
                 now);
         requests.saveAndFlush(request);
+        events.append(request);
         if (idempotencyKey != null) {
             idempotencyKeys.save(user.id(), idempotencyKey, fingerprint, request.getId());
         }

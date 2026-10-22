@@ -24,11 +24,14 @@ public class ProcessingService {
 
     private final ServiceRequestRepository requests;
     private final RequestQueryService queries;
+    private final WorkflowEventSink events;
     private final Clock clock;
 
-    public ProcessingService(ServiceRequestRepository requests, RequestQueryService queries, Clock clock) {
+    public ProcessingService(
+            ServiceRequestRepository requests, RequestQueryService queries, WorkflowEventSink events, Clock clock) {
         this.requests = requests;
         this.queries = queries;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -96,6 +99,7 @@ public class ProcessingService {
         ServiceRequest request = queries.findVisible(id, user);
         Instant now = clock.instant();
         action.accept(request, now);
+        events.append(request);
         // Flush now so a concurrent change surfaces as a conflict here and the response shows the new version.
         requests.flush();
         return RequestViews.Detail.of(request, now);
@@ -122,6 +126,7 @@ public class ProcessingService {
             }
             try {
                 action.accept(request, now);
+                events.append(request);
                 codes.add(request.getCode());
             } catch (ConflictException | BusinessRuleException | ForbiddenException | NotFoundException exception) {
                 failures.put(id.toString(), exception.getMessage());
