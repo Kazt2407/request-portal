@@ -1,0 +1,309 @@
+{
+  "realm": "request-portal",
+  "displayName": "Request Portal",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "accessTokenLifespan": 900,
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "en",
+    "vi"
+  ],
+  "defaultLocale": "en",
+  "roles": {
+    "realm": [
+      {
+        "name": "STUDENT",
+        "description": "Submits and tracks own requests"
+      },
+      {
+        "name": "LECTURER",
+        "description": "Submits and tracks own requests, lecturer-only templates"
+      },
+      {
+        "name": "STAFF",
+        "description": "Processes request steps assigned to their department"
+      },
+      {
+        "name": "ADMIN",
+        "description": "Manages templates, forms, accounts and departments"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "portal-spa",
+      "name": "Request Portal web app",
+      "description": "Browser app, authorization code flow with PKCE.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://localhost:5173/*"
+      ],
+      "webOrigins": [
+        "http://localhost:5173"
+      ],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "included.custom.audience": "request-portal-api"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "portal-dev",
+      "name": "Local development and tests",
+      "description": "DEV ONLY: password grant so scripts and tests can fetch tokens. Never enable in production.",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "included.custom.audience": "request-portal-api"
+          }
+        },
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "claim.name": "roles",
+            "multivalued": "true",
+            "jsonType.label": "String"
+          }
+        },
+        {
+          "name": "department",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "true",
+            "userinfo.token.claim": "true",
+            "introspection.token.claim": "true",
+            "user.attribute": "department",
+            "claim.name": "department",
+            "jsonType.label": "String"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "org-service",
+      "name": "org-service",
+      "description": "Service account used by org-service to manage users through the Keycloak Admin API.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "org-service-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true
+    }
+  ],
+  "users": [
+    {
+      "username": "student",
+      "email": "an.nguyen@student.example.edu",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Văn An",
+      "lastName": "Nguyễn",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "STUDENT"
+      ]
+    },
+    {
+      "username": "lecturer",
+      "email": "binh.tran@example.edu",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Thị Bình",
+      "lastName": "Trần",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "LECTURER"
+      ]
+    },
+    {
+      "username": "staff.academic",
+      "email": "cuong.le@example.edu",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Văn Cường",
+      "lastName": "Lê",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "STAFF"
+      ],
+      "attributes": {
+        "department": [
+          "ACAD"
+        ]
+      }
+    },
+    {
+      "username": "staff.finance",
+      "email": "dung.pham@example.edu",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Thị Dung",
+      "lastName": "Phạm",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "STAFF"
+      ],
+      "attributes": {
+        "department": [
+          "FIN"
+        ]
+      }
+    },
+    {
+      "username": "admin",
+      "email": "admin@example.edu",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Minh Em",
+      "lastName": "Hoàng",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ADMIN"
+      ],
+      "attributes": {
+        "department": [
+          "IT"
+        ]
+      }
+    },
+    {
+      "username": "service-account-org-service",
+      "enabled": true,
+      "serviceAccountClientId": "org-service",
+      "clientRoles": {
+        "realm-management": [
+          "view-users",
+          "query-users",
+          "manage-users",
+          "view-realm"
+        ]
+      }
+    }
+  ],
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false, \"validations\": {\"length\": {\"min\": 3, \"max\": 255}, \"username-prohibited-characters\": {}, \"up-username-not-idn-homograph\": {}}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false, \"validations\": {\"email\": {}, \"length\": {\"max\": 255}}, \"required\": {\"roles\": [\"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false, \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}, \"multivalued\": false, \"validations\": {\"length\": {\"max\": 255}, \"person-name-prohibited-characters\": {}}, \"required\": {\"roles\": [\"user\"]}}, {\"name\": \"department\", \"displayName\": \"Department\", \"validations\": {\"length\": {\"max\": 16}}, \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}, \"multivalued\": false}], \"groups\": [{\"name\": \"user-metadata\", \"displayHeader\": \"User metadata\", \"displayDescription\": \"Attributes, which refer to user metadata\"}]}"
+          ]
+        }
+      }
+    ]
+  }
+}

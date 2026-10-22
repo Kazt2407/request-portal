@@ -57,7 +57,10 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:26.8.0
-    command: start-dev
+    # Imports infra/keycloak/realm-request-portal.json on startup if the realm does not exist yet.
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak:/opt/keycloak/data/import:ro
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
