@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:replace="~{mail/layout :: email(~{::content})}">
+    <th:block th:fragment="content">
+        <p>Dear <span th:text="${requesterName}">Nguyễn Văn An</span>,</p>
+        <p>Your request <strong th:text="${title}">Official transcript</strong>
+            (<span th:text="${code}">ACAD-0001</span>) was rejected by the
+            <span th:text="${rejectingDepartmentName}">Academic Affairs Office</span>.</p>
+        <p style="background: #fef2f2; border-left: 4px solid #dc2626; padding: 8px 12px;">
+            Reason: <span th:text="${reason}">Student ID does not match</span>
+        </p>
+        <p>You can submit a new request after fixing the problem.</p>
+    </th:block>
+</div>
+</body>
+</html>

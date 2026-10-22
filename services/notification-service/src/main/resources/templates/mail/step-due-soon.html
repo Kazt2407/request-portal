@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:replace="~{mail/layout :: email(~{::content})}">
+    <th:block th:fragment="content">
+        <p>Dear <span th:text="${departmentName}">Academic Affairs Office</span>,</p>
+        <p>Your step on <strong th:text="${title}">Official transcript</strong>
+            (<span th:text="${code}">ACAD-0001</span>) is due within a day, at
+            <strong th:text="${dueAt}">25/10/2026 11:35</strong>.</p>
+        <p>Step: <span th:text="${stepDescription}">Compile the transcript</span></p>
+    </th:block>
+</div>
+</body>
+</html>

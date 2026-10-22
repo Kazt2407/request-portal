@@ -3,7 +3,8 @@ package dev.requestportal.notification;
 import org.springframework.boot.SpringApplication;
 
 /**
- * Runs the service locally against a throwaway PostgreSQL container: {@code ./mvnw -pl services/notification-service spring-boot:test-run}.
+ * Runs the service locally against throwaway PostgreSQL, Kafka and Mailpit containers:
+ * {@code ./mvnw -pl services/notification-service spring-boot:test-run}.
  */
 public class TestNotificationServiceApplication {
 

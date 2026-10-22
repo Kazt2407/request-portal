@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:replace="~{mail/layout :: email(~{::content})}">
+    <th:block th:fragment="content">
+        <p>Dear <span th:text="${requesterName}">Nguyễn Văn An</span>,</p>
+        <p>Your request <strong th:text="${title}">Official transcript</strong>
+            (<span th:text="${code}">ACAD-0001</span>) is ready.</p>
+        <p>Please collect the result at the
+            <strong th:text="${resultDepartmentName}">Finance and Accounting Office</strong>.</p>
+    </th:block>
+</div>
+</body>
+</html>

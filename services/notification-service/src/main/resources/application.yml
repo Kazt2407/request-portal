@@ -12,6 +12,30 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: notification-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer: # for the dead-letter topic
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      concurrency: 3
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    properties:
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 5000
+      mail.smtp.writetimeout: 5000
   security:
     oauth2:
       resourceserver:
@@ -19,6 +43,40 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/request-portal}
           jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/request-portal/protocol/openid-connect/certs
           audiences: request-portal-api
+      client:
+        registration:
+          org-service:
+            provider: keycloak
+            client-id: notification-service
+            # Dev secret from infra/keycloak/realm-request-portal.json; real environments set NOTIFICATION_CLIENT_SECRET.
+            client-secret: ${NOTIFICATION_CLIENT_SECRET:notification-service-dev-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/request-portal/protocol/openid-connect/token
+
+portal:
+  events:
+    topic: request-events
+    dead-letter-topic: request-events.DLT
+    partitions: 3
+    replicas: 1
+    processed-retention: 30d
+  mail:
+    from: "Request Portal <no-reply@request-portal.local>"
+    # Links in emails point at the web app.
+    portal-url: ${PORTAL_URL:http://localhost:5173}
+    time-zone: Asia/Ho_Chi_Minh
+  sender:
+    poll-interval: 2s
+    batch-size: 20
+    max-attempts: 5
+  reminders:
+    interval: 5m
+    due-soon-window: 24h
+  org-service:
+    url: ${ORG_SERVICE_URL:http://localhost:8081}
+  cleanup-cron: "0 30 3 * * *"
 
 server:
   port: 8084

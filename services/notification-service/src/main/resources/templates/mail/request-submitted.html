@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:replace="~{mail/layout :: email(~{::content})}">
+    <th:block th:fragment="content">
+        <p>Dear <span th:text="${requesterName}">Nguyễn Văn An</span>,</p>
+        <p>We received your request <strong th:text="${title}">Official transcript</strong>
+            with code <strong th:text="${code}">ACAD-0001</strong>.</p>
+        <p th:if="${expectedDays != ''}">It usually takes up to <strong th:text="${expectedDays}">4</strong> day(s).
+            We will email you when it is ready.</p>
+        <p th:if="${expectedDays == ''}">We will email you when it is ready.</p>
+    </th:block>
+</div>
+</body>
+</html>

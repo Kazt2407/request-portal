@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<body>
+<div th:replace="~{mail/layout :: email(~{::content})}">
+    <th:block th:fragment="content">
+        <p>Dear <span th:text="${departmentName}">Academic Affairs Office</span>,</p>
+        <p style="background: #fffbeb; border-left: 4px solid #d97706; padding: 8px 12px;">
+            Your step on <strong th:text="${title}">Official transcript</strong>
+            (<span th:text="${code}">ACAD-0001</span>) was due at
+            <strong th:text="${dueAt}">25/10/2026 11:35</strong> and is now overdue.
+        </p>
+        <p>Step: <span th:text="${stepDescription}">Compile the transcript</span></p>
+    </th:block>
+</div>
+</body>
+</html>
