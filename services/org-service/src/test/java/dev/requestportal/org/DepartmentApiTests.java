@@ -22,6 +22,7 @@ class DepartmentApiTests extends ApiTestSupport {
         assertThat(result).hasStatusOk();
         List<String> codes = json(result).read("$[*].code");
         assertThat(codes).contains("ACAD", "FIN", "IT", "STU").isSorted();
+        assertThat(json(result).<List<String>>read("$[?(@.code == 'FIN')].email")).containsExactly("finance@example.edu");
     }
 
     @Test
@@ -30,7 +31,7 @@ class DepartmentApiTests extends ApiTestSupport {
                 .header(AUTHORIZATION, bearer("admin"))
                 .contentType(APPLICATION_JSON)
                 .content("""
-                        {"code": "LIB", "name": "Library"}
+                        {"code": "LIB", "name": "Library", "email": "library@example.edu"}
                         """)
                 .exchange();
 
@@ -38,6 +39,7 @@ class DepartmentApiTests extends ApiTestSupport {
         Integer id = json(result).read("$.id");
         assertThat(result.getResponse().getHeader("Location")).isEqualTo("/api/v1/departments/" + id);
         assertThat(json(result).read("$.name", String.class)).isEqualTo("Library");
+        assertThat(json(result).read("$.email", String.class)).isEqualTo("library@example.edu");
     }
 
     @Test
@@ -57,13 +59,14 @@ class DepartmentApiTests extends ApiTestSupport {
                 .header(AUTHORIZATION, bearer("admin"))
                 .contentType(APPLICATION_JSON)
                 .content("""
-                        {"code": "lib", "name": " "}
+                        {"code": "lib", "name": " ", "email": "not-an-email"}
                         """)
                 .exchange();
 
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
         assertThat(json(result).read("$.errors.code", String.class)).startsWith("must be 2-16 upper-case");
         assertThat(json(result).read("$.errors.name", String.class)).isNotBlank();
+        assertThat(json(result).read("$.errors.email", String.class)).isNotBlank();
     }
 
     @Test

@@ -171,10 +171,40 @@
       "directAccessGrantsEnabled": false,
       "implicitFlowEnabled": false,
       "serviceAccountsEnabled": true
+    },
+    {
+      "clientId": "notification-service",
+      "name": "notification-service",
+      "description": "Service account used by notification-service to read department mailboxes from org-service.",
+      "enabled": true,
+      "publicClient": false,
+      "protocol": "openid-connect",
+      "clientAuthenticatorType": "client-secret",
+      "secret": "notification-service-dev-secret",
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": true,
+      "protocolMappers": [
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "userinfo.token.claim": "false",
+            "introspection.token.claim": "true",
+            "included.custom.audience": "request-portal-api"
+          }
+        }
+      ]
     }
   ],
   "users": [
     {
+      "id": "a1000000-0000-4000-8000-000000000001",
       "username": "student",
       "email": "an.nguyen@student.example.edu",
       "emailVerified": true,
@@ -193,6 +223,7 @@
       ]
     },
     {
+      "id": "a1000000-0000-4000-8000-000000000002",
       "username": "lecturer",
       "email": "binh.tran@example.edu",
       "emailVerified": true,
@@ -211,6 +242,7 @@
       ]
     },
     {
+      "id": "a1000000-0000-4000-8000-000000000003",
       "username": "staff.academic",
       "email": "cuong.le@example.edu",
       "emailVerified": true,
@@ -234,6 +266,7 @@
       }
     },
     {
+      "id": "a1000000-0000-4000-8000-000000000004",
       "username": "staff.finance",
       "email": "dung.pham@example.edu",
       "emailVerified": true,
@@ -257,6 +290,7 @@
       }
     },
     {
+      "id": "a1000000-0000-4000-8000-000000000005",
       "username": "admin",
       "email": "admin@example.edu",
       "emailVerified": true,
@@ -291,6 +325,11 @@
           "view-realm"
         ]
       }
+    },
+    {
+      "username": "service-account-notification-service",
+      "enabled": true,
+      "serviceAccountClientId": "notification-service"
     }
   ],
   "components": {

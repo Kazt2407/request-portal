@@ -25,6 +25,10 @@ public class Department {
     @Column(nullable = false, length = 200)
     private String name;
 
+    /** Shared mailbox for notifications; optional. */
+    @Column(length = 320)
+    private String email;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -37,13 +41,15 @@ public class Department {
     protected Department() {
     }
 
-    public Department(String code, String name) {
+    public Department(String code, String name, String email) {
         this.code = code;
         this.name = name;
+        this.email = email;
     }
 
-    public void rename(String name) {
+    public void update(String name, String email) {
         this.name = name;
+        this.email = email;
     }
 
     @PrePersist
@@ -67,6 +73,10 @@ public class Department {
 
     public String getName() {
         return name;
+    }
+
+    public String getEmail() {
+        return email;
     }
 
     public Long getVersion() {

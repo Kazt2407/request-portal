@@ -31,7 +31,8 @@ public class DepartmentService {
         if (departments.existsByCode(request.code())) {
             throw new ConflictException("Department code " + request.code() + " is already in use");
         }
-        Department department = departments.save(new Department(request.code(), request.name().strip()));
+        Department department = departments.save(
+                new Department(request.code(), request.name().strip(), blankToNull(request.email())));
         return DepartmentResponse.from(department);
     }
 
@@ -42,9 +43,13 @@ public class DepartmentService {
             throw new ConflictException("Department " + department.getCode()
                     + " was changed by someone else; reload it and try again");
         }
-        department.rename(request.name().strip());
+        department.update(request.name().strip(), blankToNull(request.email()));
         departments.flush();
         return DepartmentResponse.from(department);
+    }
+
+    private static String blankToNull(String text) {
+        return text == null || text.isBlank() ? null : text.strip();
     }
 
     @Transactional(readOnly = true)
