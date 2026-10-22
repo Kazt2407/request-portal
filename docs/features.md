@@ -35,52 +35,57 @@ Moved to later phases, where they are first needed:
 
 - Academic terms and school years, used as selectable field values (phase 3).
 - Student profile: core data fetched from an external Student Information System (mocked), cached, with
-  supplementary fields staff can edit; student IDs masked in responses (phase 5, for form filling).
+  supplementary fields staff can edit; student IDs masked in responses (phase 6, for form filling).
 
 ## 2. Request templates — `request-service` (phase 3)
 
-Admins define what can be requested.
+Admins define what can be requested. See [ADR 0004](adr/0004-request-workflow.md) for the design.
 
-- Template: title, description, owning department, audience (`STUDENT`, `LECTURER`, both),
+- Template: title, description, owning department, audience (`STUDENT`, `LECTURER`, `ALL`),
   status (`ACTIVE` / `INACTIVE`), and whether processing time is shown in emails.
 - Fields, ordered, each with a key, label, description, hint, `required` flag and a type:
   `TEXT`, `TEXTAREA`, `SELECT` (with an option list), `FILE`, `IMAGE`, `TERM`, `SCHOOL_YEAR`.
   File fields can define their own upload folder and upload notes.
 - Steps, ordered, each assigned to a department, with a description, a deadline in days (SLA)
   and whether staff must attach a file when completing it.
-- Attachments on the template (for example a blank form) are copied onto every new request.
+- Saving checks that every department exists in org-service, field keys are unique and select fields
+  have options. Updates replace the whole definition and use optimistic locking.
+- Requesters only see active templates for their audience.
+- Template attachments (for example a blank form copied onto every request) arrive with files in phase 6.
 
 ## 3. Submitting requests — `request-service` (phase 3)
 
 - The requester picks an active template allowed for their role; the form renders from its fields.
-- Validation: every required field is present, and unknown fields are rejected.
-- Files upload straight to object storage with presigned URLs; the request stores references only.
+- Validation reports every problem at once, per field: required values, unknown fields, option lists,
+  text lengths, academic terms and school years known to org-service, and file ids for file fields.
 - On submission, in one transaction:
-  - the request gets a human-readable code `<DEPARTMENT_CODE>-<sequence>`, e.g. `ACAD-0042`;
-  - one step instance is created per template step: the first is `IN_PROGRESS` with a due date of
+  - the request gets a code `<DEPARTMENT_CODE>-<sequence>` from a per-department counter, e.g. `ACAD-0042`;
+  - the template's steps are copied into the request: the first is `IN_PROGRESS` with a due date of
     now + SLA days, the rest are `PENDING`;
-  - a `RequestSubmitted` event is published.
+  - the history records `SUBMITTED`.
 - Submissions accept an `Idempotency-Key` header so a retried click never creates two requests.
-- Requesters see their own requests with a timeline of steps, notes and attachments.
+- Requesters list their own requests and open each one with its values, steps and history.
 - A requester can cancel a request only while no step is `COMPLETED`; open steps become `CANCELLED`.
 
 ## 4. Processing workflow — `request-service` (phase 3)
 
-Step states: `PENDING → IN_PROGRESS → COMPLETED`, or `REJECTED` / `CANCELLED`, plus `OVERDUE`
-while an in-progress step is past its due date.
+Step states: `PENDING → IN_PROGRESS → COMPLETED`, or `REJECTED`, or `CANCELLED` when the request ends
+first. A step is *overdue* while it is in progress past its due date; this is computed, not stored.
 
-- Staff see requests that have a step assigned to their department; admins see all.
-- Filters: template, date range, department, status, "result received" flag, keyword (code, name, email).
-- **Complete** the current step (must be `IN_PROGRESS` or `OVERDUE`, and the user must belong to the
-  step's department), with an optional note and files. The next `PENDING` step becomes
-  `IN_PROGRESS` with a fresh due date; if there is none, the request is complete.
-- **Reject** the current step with a note. All later `PENDING` steps become `REJECTED`.
-- **Bulk** complete or reject several requests at once.
-- **Result received**: staff of the current department mark whether the requester has collected
-  the result (single or bulk).
-- Concurrent updates to the same request are detected with optimistic locking, so two staff
-  members can never both complete the same step.
-- Every state change is written to an audit log (who, what, when, before/after).
+- Staff see requests that have a step assigned to their department; admins see all and can filter by
+  department. Filters: template, status, submitted date range, "result received", "awaiting my
+  department", and text (code, requester name or email, accent-insensitive).
+- **Complete** the current step (staff of the step's department only), with an optional note and the
+  attachments the step requires. The next step starts with a fresh due date; after the last step the
+  request is `COMPLETED`.
+- **Reject** the current step with a reason. The request is `REJECTED` and later steps are `CANCELLED`.
+- **Bulk** complete or reject the current steps of several requests: all succeed or nothing changes, and
+  the response lists the reason for every request that failed.
+- **Result received**: staff of the last step's department record whether the requester collected the
+  result of a completed request (single or bulk).
+- Acting on a step that is no longer current is a `409`; two staff acting at once get one success and one
+  `409` (optimistic locking).
+- Every state change is written to the request's history (who, what, when, note).
 
 ## 5. Notifications — `notification-service` (phase 4)
 
@@ -91,9 +96,10 @@ Consumes workflow events from Kafka and sends email:
 - request rejected, with the reason;
 - step overdue (to the responsible department) and reminders before the due date.
 
-A scheduled job marks overdue steps; a distributed lock makes sure only one instance runs it.
+A scheduled job finds steps that became overdue and sends reminders; a distributed lock makes sure
+only one instance runs it.
 
-## 6. Documents and exports — `document-service` (phase 5)
+## 6. Documents and exports — `document-service` (phase 6)
 
 - **Fillable forms**: admins upload `.docx` templates with `${placeholder}` fields and define extra
   runtime fields. Users download the form pre-filled with their profile data and the values they
@@ -105,14 +111,17 @@ A scheduled job marks overdue steps; a distributed lock makes sure only one inst
   archives expire after 3 days.
 - Housekeeping jobs delete abandoned uploads (> 24 h) and expired archives.
 
-## 7. Frontend — Vue 3 + TypeScript (phase 6)
+## 7. Frontend — Vue 3 + TypeScript (phase 7)
 
 Role-based areas: requester (new request, my requests, request detail, forms, profile),
 staff (request queue, request detail, bulk download), admin (templates with fields and steps,
 forms, accounts, departments).
 
-## 8. Production readiness (phase 7)
+## 8. Deployment and operations (phase 5)
 
-Load test with published p95 latencies, OpenTelemetry tracing across services, Prometheus and
-Grafana dashboards, Helm charts for Kubernetes, and a Terraform plan for AWS
-(EKS, RDS, MSK, ElastiCache, S3, SES).
+- Container images for every service, built in CI.
+- Helm charts, deployed to a local Kubernetes cluster (k3d), with liveness and readiness probes.
+- Terraform plan for AWS: EKS, RDS for PostgreSQL, MSK for Kafka, ElastiCache for Redis, S3, SES.
+- OpenTelemetry tracing across the gateway and services, Prometheus metrics and Grafana dashboards.
+- Load test with published p95 latencies.
+- An Ansible playbook that installs k3s and Rancher on a plain Linux server.

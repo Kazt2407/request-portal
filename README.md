@@ -7,8 +7,9 @@ Each request moves through an ordered chain of department approval steps with de
 system notifies people by email and generates Word/Excel documents along the way.
 The full feature list is in [docs/features.md](docs/features.md).
 
-> Status: **phase 2 — identity**. Sign-in with Keycloak, token validation in the gateway and every
-> service, and the first APIs (accounts and departments). See the [Roadmap](#roadmap).
+> Status: **phase 3 — core workflow**. Templates with dynamic fields and approval steps, idempotent
+> submissions, department processing with bulk actions and a full audit trail, on top of Keycloak
+> sign-in. Notifications, files and the web app come next; see the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -41,7 +42,12 @@ flowchart LR
 Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 [why microservices for a small domain](docs/adr/0001-microservices-for-a-small-domain.md),
 [database per service](docs/adr/0002-database-per-service.md),
-[identity with Keycloak](docs/adr/0003-identity-with-keycloak.md).
+[identity with Keycloak](docs/adr/0003-identity-with-keycloak.md),
+[the request workflow](docs/adr/0004-request-workflow.md).
+
+Shared code lives in small libraries under [`libs`](libs): `service-security` (JWT resource server,
+roles, current user), `service-web` (RFC 9457 errors, paging) and `test-support` (a stand-in for
+Keycloak that signs test tokens).
 
 ## Tech stack
 
@@ -49,8 +55,8 @@ Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 - **Data and messaging:** PostgreSQL 18, Apache Kafka 4 (KRaft), Redis 8
 - **Security:** Keycloak 26 (OpenID Connect), every service an OAuth2 resource server validating JWTs, Keycloak Admin API
 - **Testing:** JUnit 5, AssertJ, Testcontainers
-- **Delivery:** Docker, Docker Compose, GitHub Actions; Kubernetes (Helm) and AWS (Terraform) in phase 7
-- **Frontend:** Vue 3 + TypeScript (phase 6)
+- **Delivery:** Docker, Docker Compose, GitHub Actions; Kubernetes (Helm) and AWS (Terraform) in phase 5
+- **Frontend:** Vue 3 + TypeScript (phase 7)
 
 ## Getting started
 
@@ -63,15 +69,16 @@ docker compose -f infra/docker-compose.yml up -d
 # 2. Build everything and run the tests (tests start their own PostgreSQL with Testcontainers)
 ./mvnw verify
 
-# 3. Run a service against the local infrastructure
+# 3. Run the services against the local infrastructure (one terminal each)
 ./mvnw -pl services/org-service spring-boot:run
+./mvnw -pl services/request-service spring-boot:run
 ./mvnw -pl services/gateway spring-boot:run
 
 # Or run a service against a throwaway database, without docker compose
 ./mvnw -pl services/org-service spring-boot:test-run
 ```
 
-Check it is up: `curl localhost:8080/actuator/health` (gateway), `curl localhost:8081/actuator/health` (org-service).
+Check it is up: `curl localhost:8080/actuator/health` (gateway); services answer on 8081–8084.
 
 ### Test users
 
@@ -88,7 +95,12 @@ on first start. All passwords are `password` (local only).
 
 ### Try the API
 
-`scripts/token.sh <username>` prints an access token for a test user. With org-service and the gateway running:
+With org-service, request-service and the gateway running, `scripts/demo-workflow.sh` walks one request
+through the whole workflow as three users: a student submits an official transcript request (and retries
+it safely), Academic Affairs and then Finance complete their steps, and the student reads the history.
+It needs `jq`. The development data includes four sample templates, departments and academic terms.
+
+`scripts/token.sh <username>` prints an access token for a test user, for your own calls:
 
 ```bash
 # Who am I? (creates the account on first call)
@@ -109,6 +121,19 @@ curl -X PUT -H "Authorization: Bearer $(scripts/token.sh admin)" -H "Content-Typ
 | `PUT /api/v1/accounts/{id}/access` | `ADMIN` | Set roles and department (written to Keycloak) |
 | `GET /api/v1/departments`, `GET /api/v1/departments/{id}` | signed in | Departments |
 | `POST /api/v1/departments`, `PUT /api/v1/departments/{id}` | `ADMIN` | Create, rename (optimistic locking) |
+| `GET /api/v1/terms?schoolYear=`, `GET /api/v1/terms/school-years` | signed in | Academic terms and school years |
+| `POST /api/v1/terms` | `ADMIN` | Add a term (overlapping dates are rejected) |
+| `GET /api/v1/templates/available` | student, lecturer | Templates I can submit |
+| `GET /api/v1/templates/{id}` | signed in | One template with its fields and steps |
+| `GET /api/v1/templates?status=`, `POST /api/v1/templates`, `PUT /api/v1/templates/{id}` | `ADMIN` | Manage templates |
+| `POST /api/v1/requests` (header `Idempotency-Key`) | student, lecturer | Submit a request |
+| `GET /api/v1/requests/mine?status=` | signed in | My requests |
+| `GET /api/v1/requests/{id}` | requester, involved staff, admin | Values, steps and history |
+| `POST /api/v1/requests/{id}/cancel` | requester | Cancel before any step is completed |
+| `GET /api/v1/requests?q=&templateId=&status=&awaitingMe=&resultReceived=&submittedFrom=&submittedTo=&departmentCode=` | `STAFF`, `ADMIN` | Department queue / all requests |
+| `POST /api/v1/requests/{id}/steps/{position}/complete`, `.../reject` | `STAFF` of the step's department | Process the current step |
+| `POST /api/v1/requests/bulk/complete`, `/bulk/reject` | `STAFF` | Process many requests, all or nothing |
+| `PUT /api/v1/requests/{id}/result-received`, `PUT /api/v1/requests/result-received` | `STAFF` of the last department | Record that the result was collected |
 
 Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, with per-field messages for validation errors.
 
@@ -128,8 +153,13 @@ Host ports are moved off the defaults so the stack can run next to other local p
 
 - [x] **Phase 1 — Foundation:** Maven multi-module build, service skeletons, local infrastructure, CI
 - [x] **Phase 2 — Identity:** Keycloak realm, JWT validation at gateway and services, `org-service` APIs
-- [ ] **Phase 3 — Core workflow:** templates, dynamic fields, academic terms, submissions, approval steps, audit log
-- [ ] **Phase 4 — Events:** Kafka with transactional outbox, `notification-service`, deadline reminders
-- [ ] **Phase 5 — Documents:** S3 uploads, `.docx` form filling, Excel exports, bulk ZIP jobs
-- [ ] **Phase 6 — Frontend:** Vue 3 + TypeScript SPA
-- [ ] **Phase 7 — Production readiness:** load tests, tracing and dashboards, Helm, Terraform
+- [x] **Phase 3 — Core workflow:** templates, dynamic fields, academic terms, submissions, approval steps, audit log
+- [ ] **Phase 4 — Events:** Kafka with transactional outbox, `notification-service` emails, deadline
+  reminders; Redis for gateway rate limiting and scheduler locks
+- [ ] **Phase 5 — Deployment and operations:** container images, Helm charts on a local Kubernetes cluster,
+  Terraform for AWS, tracing and dashboards, load tests, an Ansible playbook for k3s and Rancher
+- [ ] **Phase 6 — Documents:** S3 uploads, `.docx` form filling, Excel exports, bulk ZIP jobs
+- [ ] **Phase 7 — Frontend:** a lean Vue 3 + TypeScript app over the API
+
+Phases are ordered by what a backend role values most: messaging and operations come before
+documents and the user interface.

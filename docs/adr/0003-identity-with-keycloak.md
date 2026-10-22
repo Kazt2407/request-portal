@@ -18,7 +18,7 @@ four realm roles (`STUDENT`, `LECTURER`, `STAFF`, `ADMIN`), test users and three
 
 | Client | Type | Used by |
 |---|---|---|
-| `portal-spa` | public, authorization code + PKCE | the Vue app (phase 6) |
+| `portal-spa` | public, authorization code + PKCE | the Vue app (phase 7) |
 | `portal-dev` | public, password grant | local scripts and tests only; never enabled in production |
 | `org-service` | confidential, service account | org-service calling the Keycloak Admin API |
 
