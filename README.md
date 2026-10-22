@@ -7,9 +7,10 @@ Each request moves through an ordered chain of department approval steps with de
 system notifies people by email and generates Word/Excel documents along the way.
 The full feature list is in [docs/features.md](docs/features.md).
 
-> Status: **phase 3 — core workflow**. Templates with dynamic fields and approval steps, idempotent
-> submissions, department processing with bulk actions and a full audit trail, on top of Keycloak
-> sign-in. Notifications, files and the web app come next; see the [Roadmap](#roadmap).
+> Status: **phase 4 — events**. Templates, submissions and department approvals with a full audit trail;
+> workflow events published to Kafka through a transactional outbox; email notifications and deadline
+> reminders; per-user rate limiting in the gateway. Deployment, files and the web app come next; see the
+> [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -43,7 +44,9 @@ Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 [why microservices for a small domain](docs/adr/0001-microservices-for-a-small-domain.md),
 [database per service](docs/adr/0002-database-per-service.md),
 [identity with Keycloak](docs/adr/0003-identity-with-keycloak.md),
-[the request workflow](docs/adr/0004-request-workflow.md).
+[the request workflow](docs/adr/0004-request-workflow.md),
+[events and notifications](docs/adr/0005-events-and-notifications.md).
+The Kafka event format is documented in [docs/events.md](docs/events.md).
 
 Shared code lives in small libraries under [`libs`](libs): `service-security` (JWT resource server,
 roles, current user), `service-web` (RFC 9457 errors, paging) and `test-support` (a stand-in for
@@ -72,6 +75,7 @@ docker compose -f infra/docker-compose.yml up -d
 # 3. Run the services against the local infrastructure (one terminal each)
 ./mvnw -pl services/org-service spring-boot:run
 ./mvnw -pl services/request-service spring-boot:run
+./mvnw -pl services/notification-service spring-boot:run
 ./mvnw -pl services/gateway spring-boot:run
 
 # Or run a service against a throwaway database, without docker compose
@@ -95,10 +99,10 @@ on first start. All passwords are `password` (local only).
 
 ### Try the API
 
-With org-service, request-service and the gateway running, `scripts/demo-workflow.sh` walks one request
-through the whole workflow as three users: a student submits an official transcript request (and retries
-it safely), Academic Affairs and then Finance complete their steps, and the student reads the history.
-It needs `jq`. The development data includes four sample templates, departments and academic terms.
+With all four services and the gateway running, `scripts/demo-workflow.sh` walks one request through the
+whole workflow as three users: a student submits an official transcript request (and retries it safely),
+Academic Affairs and then Finance complete their steps, the student reads the history, and the script
+lists the emails that arrived in Mailpit (http://localhost:8025). It needs `jq`. The development data includes four sample templates, departments and academic terms.
 
 `scripts/token.sh <username>` prints an access token for a test user, for your own calls:
 
@@ -134,6 +138,10 @@ curl -X PUT -H "Authorization: Bearer $(scripts/token.sh admin)" -H "Content-Typ
 | `POST /api/v1/requests/{id}/steps/{position}/complete`, `.../reject` | `STAFF` of the step's department | Process the current step |
 | `POST /api/v1/requests/bulk/complete`, `/bulk/reject` | `STAFF` | Process many requests, all or nothing |
 | `PUT /api/v1/requests/{id}/result-received`, `PUT /api/v1/requests/result-received` | `STAFF` of the last department | Record that the result was collected |
+| `GET /api/v1/notifications?requestId=&status=&kind=` | `ADMIN` | Emails and their delivery status |
+| `POST /api/v1/notifications/{id}/retry` | `ADMIN` | Resend a failed or skipped email |
+
+The gateway rate-limits each user per service (10 requests per second, bursts of 30) and answers `429` beyond that.
 
 Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, with per-field messages for validation errors.
 
@@ -145,7 +153,7 @@ Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, w
 | Kafka | `localhost:9094` | none |
 | Redis | `localhost:6380` | none |
 | Keycloak | http://localhost:8180 (realm `request-portal`) | admin console: `admin` / `admin` |
-| Mailpit (email inbox) | http://localhost:8025 | none |
+| Mailpit (catches all outgoing email) | http://localhost:8025 | none |
 
 Host ports are moved off the defaults so the stack can run next to other local projects.
 
@@ -154,8 +162,8 @@ Host ports are moved off the defaults so the stack can run next to other local p
 - [x] **Phase 1 — Foundation:** Maven multi-module build, service skeletons, local infrastructure, CI
 - [x] **Phase 2 — Identity:** Keycloak realm, JWT validation at gateway and services, `org-service` APIs
 - [x] **Phase 3 — Core workflow:** templates, dynamic fields, academic terms, submissions, approval steps, audit log
-- [ ] **Phase 4 — Events:** Kafka with transactional outbox, `notification-service` emails, deadline
-  reminders; Redis for gateway rate limiting and scheduler locks
+- [x] **Phase 4 — Events:** Kafka with a transactional outbox, `notification-service` emails, deadline
+  reminders, Redis rate limiting in the gateway
 - [ ] **Phase 5 — Deployment and operations:** container images, Helm charts on a local Kubernetes cluster,
   Terraform for AWS, tracing and dashboards, load tests, an Ansible playbook for k3s and Rancher
 - [ ] **Phase 6 — Documents:** S3 uploads, `.docx` form filling, Excel exports, bulk ZIP jobs

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Walks one request through the whole workflow, as three different users, against a running stack:
-# docker compose infrastructure + org-service + request-service + gateway. Needs curl and jq.
+# docker compose infrastructure + org-service + request-service + notification-service + gateway.
+# Ends by listing the emails the workflow produced. Needs curl and jq.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -53,3 +54,13 @@ call "$finance" -X PUT -d '{"received": true}' "$api/requests/$id/result-receive
 heading "7. Student: the request's history"
 call "$student" "$api/requests/$id" | jq -r '.history[]
   | "   \(.at[0:19])  \(.action)\(if .stepPosition then " (step \(.stepPosition))" else "" end) by \(.actor.name)\(if .note then " — \(.note)" else "" end)"'
+
+heading "8. Emails, delivered through Kafka and notification-service (Mailpit inbox: http://localhost:8025)"
+code=$(echo "$request" | jq -r .code)
+mailpit="${MAILPIT_URL:-http://localhost:8025}/api/v1"
+for _ in $(seq 1 30); do
+  emails=$(curl -sS -G "$mailpit/search" --data-urlencode "query=subject:\"[$code]\"")
+  [ "$(echo "$emails" | jq '.messages_count')" -ge 4 ] && break
+  sleep 1
+done
+echo "$emails" | jq -r '.messages | sort_by(.Created)[] | "   to \(.To[0].Address): \(.Subject)"'

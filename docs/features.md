@@ -89,15 +89,23 @@ first. A step is *overdue* while it is in progress past its due date; this is co
 
 ## 5. Notifications — `notification-service` (phase 4)
 
-Consumes workflow events from Kafka and sends email:
+Driven by workflow events from Kafka ([event catalog](events.md), [ADR 0005](adr/0005-events-and-notifications.md)).
+Emails go to the requester or to the department's shared mailbox (set on the department in org-service):
 
-- request submitted (to requester);
-- request completed, so the requester can collect the result;
-- request rejected, with the reason;
-- step overdue (to the responsible department) and reminders before the due date.
+| Email | To | When |
+|---|---|---|
+| Request received (with expected days if the template shows them) | requester | submitted |
+| New request waiting, with the step and its deadline | department | each step starts |
+| Due within a day | department | 24 hours before a step's deadline |
+| Overdue | department | a step passes its deadline |
+| Ready to collect, naming the department that hands it over | requester | completed |
+| Rejected, with the reason | requester | a step is rejected |
+| Cancelled | requester | the requester cancels |
 
-A scheduled job finds steps that became overdue and sends reminders; a distributed lock makes sure
-only one instance runs it.
+- Each event is handled exactly once, even when Kafka delivers it twice.
+- Emails are queued and retried with backoff; failures never block the workflow.
+- Admins can list a request's notifications with their delivery status and retry failed ones.
+- Reminders are claimed atomically, so running several instances never sends one twice.
 
 ## 6. Documents and exports — `document-service` (phase 6)
 
