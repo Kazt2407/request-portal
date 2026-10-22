@@ -18,6 +18,7 @@
     <description>Request submission and multi-step approval platform built as Spring Boot microservices.</description>
 
     <modules>
+        <module>libs/service-security</module>
         <module>services/gateway</module>
         <module>services/org-service</module>
         <module>services/request-service</module>
@@ -32,6 +33,11 @@
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>dev.requestportal</groupId>
+                <artifactId>service-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>

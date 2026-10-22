@@ -1,6 +1,14 @@
 spring:
   application:
     name: gateway
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Issuer printed in tokens (public URL) vs. where keys are fetched (may be an internal hostname).
+          issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/request-portal}
+          jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/request-portal/protocol/openid-connect/certs
+          audiences: request-portal-api
   cloud:
     gateway:
       server:
