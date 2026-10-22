@@ -127,9 +127,14 @@ forms, accounts, departments).
 
 ## 8. Deployment and operations (phase 5)
 
-- Container images for every service, built in CI.
-- Helm charts, deployed to a local Kubernetes cluster (k3d), with liveness and readiness probes.
-- Terraform plan for AWS: EKS, RDS for PostgreSQL, MSK for Kafka, ElastiCache for Redis, S3, SES.
-- OpenTelemetry tracing across the gateway and services, Prometheus metrics and Grafana dashboards.
-- Load test with published p95 latencies.
-- An Ansible playbook that installs k3s and Rancher on a plain Linux server.
+See [ADR 0006](adr/0006-deployment-and-operations.md).
+
+- Container images for every service from one layered, non-root Dockerfile; CI publishes them to GHCR.
+- A Helm chart deploying all services with probes, resource limits, autoscaling and hardened pods; run
+  locally on k3d against the docker compose infrastructure.
+- OpenTelemetry traces that follow a request from the gateway through Kafka to notification-service,
+  metrics over OTLP, and a provisioned Grafana dashboard (traffic, p95 latency, errors, outbox backlog,
+  email queue, JVM and database pool).
+- A k6 load test with published results in [performance.md](performance.md).
+- Terraform for AWS (EKS, RDS, MSK, ElastiCache for Valkey, S3, SES, Pod Identity) and an Ansible
+  playbook installing k3s and Rancher; both validated but not applied.

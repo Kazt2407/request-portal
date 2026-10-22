@@ -7,10 +7,11 @@ Each request moves through an ordered chain of department approval steps with de
 system notifies people by email and generates Word/Excel documents along the way.
 The full feature list is in [docs/features.md](docs/features.md).
 
-> Status: **phase 4 — events**. Templates, submissions and department approvals with a full audit trail;
-> workflow events published to Kafka through a transactional outbox; email notifications and deadline
-> reminders; per-user rate limiting in the gateway. Deployment, files and the web app come next; see the
-> [Roadmap](#roadmap).
+> Status: **phase 5 — deployment and operations**. The workflow, events and notifications run on
+> Kubernetes from container images built in CI, with distributed tracing from the API through Kafka to the
+> emails, a Grafana dashboard and measured performance (p95 under 50 ms at 120 requests per second on a
+> laptop). Terraform for AWS and Ansible for k3s and Rancher are written and validated. Files and the web
+> app come next; see the [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -45,8 +46,10 @@ Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 [database per service](docs/adr/0002-database-per-service.md),
 [identity with Keycloak](docs/adr/0003-identity-with-keycloak.md),
 [the request workflow](docs/adr/0004-request-workflow.md),
-[events and notifications](docs/adr/0005-events-and-notifications.md).
-The Kafka event format is documented in [docs/events.md](docs/events.md).
+[events and notifications](docs/adr/0005-events-and-notifications.md),
+[deployment and operations](docs/adr/0006-deployment-and-operations.md).
+The Kafka event format is documented in [docs/events.md](docs/events.md), load test results in
+[docs/performance.md](docs/performance.md).
 
 Shared code lives in small libraries under [`libs`](libs): `service-security` (JWT resource server,
 roles, current user), `service-web` (RFC 9457 errors, paging) and `test-support` (a stand-in for
@@ -57,8 +60,10 @@ Keycloak that signs test tokens).
 - **Backend:** Java 25, Spring Boot 4.1, Spring Cloud Gateway, Spring Data JPA, Flyway
 - **Data and messaging:** PostgreSQL 18, Apache Kafka 4 (KRaft), Redis 8
 - **Security:** Keycloak 26 (OpenID Connect), every service an OAuth2 resource server validating JWTs, Keycloak Admin API
-- **Testing:** JUnit 5, AssertJ, Testcontainers
-- **Delivery:** Docker, Docker Compose, GitHub Actions; Kubernetes (Helm) and AWS (Terraform) in phase 5
+- **Testing:** JUnit 5, AssertJ, Testcontainers, k6 load tests
+- **Delivery:** Docker (layered, non-root images), GitHub Actions publishing to GHCR, Helm on Kubernetes (k3d
+  locally), Terraform for AWS (EKS, RDS, MSK, ElastiCache, S3, SES), Ansible for k3s and Rancher
+- **Observability:** OpenTelemetry (traces across HTTP and Kafka, metrics over OTLP), Grafana, Tempo, Prometheus
 - **Frontend:** Vue 3 + TypeScript (phase 7)
 
 ## Getting started
@@ -154,8 +159,43 @@ Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, w
 | Redis | `localhost:6380` | none |
 | Keycloak | http://localhost:8180 (realm `request-portal`) | admin console: `admin` / `admin` |
 | Mailpit (catches all outgoing email) | http://localhost:8025 | none |
+| Grafana with Tempo and Prometheus (`--profile observability`) | http://localhost:3000 | none |
 
 Host ports are moved off the defaults so the stack can run next to other local projects.
+
+## Run on Kubernetes
+
+The services run on a local k3d cluster with the Helm chart in [`deploy/helm`](deploy/helm/request-portal),
+using the docker compose infrastructure above. Needs `k3d`, `kubectl` and `helm`.
+
+```bash
+docker compose -f infra/docker-compose.yml up -d
+JAVA_HOME=/usr/lib/jvm/java-25-openjdk scripts/k3d-up.sh   # build images, create the cluster, deploy
+API_URL=http://localhost:8088/api/v1 scripts/demo-workflow.sh
+scripts/k3d-down.sh                                         # delete the cluster
+```
+
+The same chart deploys to AWS with the endpoints from [`deploy/terraform/aws`](deploy/terraform/aws), or to
+a server prepared with [`deploy/ansible`](deploy/ansible). CI publishes the images to
+`ghcr.io/kazt2407/request-portal/<service>` on every push to `main`.
+
+## Observability
+
+```bash
+docker compose -f infra/docker-compose.yml --profile observability up -d   # Grafana on :3000
+```
+
+Services export to it when `OTEL_EXPORT_ENABLED=true` (the k3d deployment does this). Open the
+**Request Portal** dashboard for request rates, p95 latency, errors, the outbox backlog and the email
+queue, or **Explore → Tempo** and search `service.name = gateway` to follow one request from the API
+through Kafka to the email it triggered.
+
+## Performance
+
+`scripts/load-test.sh` runs a k6 load test (reads plus submit-and-approve flows) against the gateway. On
+one laptop running everything, one replica of each service handles about 120 requests per second with p95
+under 50 ms and no errors. The write-up in [docs/performance.md](docs/performance.md) includes the first
+run, which failed, and how traces and metrics found the cause.
 
 ## Roadmap
 
@@ -164,7 +204,7 @@ Host ports are moved off the defaults so the stack can run next to other local p
 - [x] **Phase 3 — Core workflow:** templates, dynamic fields, academic terms, submissions, approval steps, audit log
 - [x] **Phase 4 — Events:** Kafka with a transactional outbox, `notification-service` emails, deadline
   reminders, Redis rate limiting in the gateway
-- [ ] **Phase 5 — Deployment and operations:** container images, Helm charts on a local Kubernetes cluster,
+- [x] **Phase 5 — Deployment and operations:** container images, Helm chart on a local Kubernetes cluster,
   Terraform for AWS, tracing and dashboards, load tests, an Ansible playbook for k3s and Rancher
 - [ ] **Phase 6 — Documents:** S3 uploads, `.docx` form filling, Excel exports, bulk ZIP jobs
 - [ ] **Phase 7 — Frontend:** a lean Vue 3 + TypeScript app over the API
