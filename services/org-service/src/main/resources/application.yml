@@ -10,8 +10,44 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+    properties:
+      hibernate.default_batch_fetch_size: 50
   flyway:
-    locations: classpath:db/migration
+    # db/dev-data holds sample departments; production sets SPRING_FLYWAY_LOCATIONS=classpath:db/migration.
+    locations: classpath:db/migration,classpath:db/dev-data
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+  mvc:
+    problemdetails:
+      enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${portal.keycloak.issuer-uri}
+          jwk-set-uri: ${portal.keycloak.base-url}/realms/${portal.keycloak.realm}/protocol/openid-connect/certs
+          audiences: request-portal-api
+      client:
+        registration:
+          keycloak-admin:
+            provider: keycloak
+            client-id: org-service
+            # Dev secret from infra/keycloak/realm-request-portal.json; real environments set KEYCLOAK_ADMIN_CLIENT_SECRET.
+            client-secret: ${KEYCLOAK_ADMIN_CLIENT_SECRET:org-service-dev-secret}
+            authorization-grant-type: client_credentials
+        provider:
+          keycloak:
+            token-uri: ${portal.keycloak.base-url}/realms/${portal.keycloak.realm}/protocol/openid-connect/token
+
+portal:
+  keycloak:
+    # Where this service reaches Keycloak (inside Docker/Kubernetes this is the internal hostname)...
+    base-url: ${KEYCLOAK_URL:http://localhost:8180}
+    realm: request-portal
+    # ...and the issuer printed in tokens, which is the public URL browsers use.
+    issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/request-portal}
 
 server:
   port: 8081
