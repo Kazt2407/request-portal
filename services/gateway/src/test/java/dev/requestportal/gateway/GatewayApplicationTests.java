@@ -17,19 +17,39 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.cloud.gateway.route.Route;
 import org.springframework.cloud.gateway.route.RouteLocator;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpHeaders;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
+import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.utility.DockerImageName;
 
 /**
- * Runs the gateway against a stand-in Keycloak that signs tokens and a stub org-service that records
- * what the gateway forwards, so no real Keycloak is needed.
+ * Runs the gateway against a stand-in Keycloak that signs tokens, a stub org-service that records what the
+ * gateway forwards, and a real Redis for rate limiting.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@Import(GatewayApplicationTests.RedisConfiguration.class)
 class GatewayApplicationTests {
+
+    /** Low limits so the test can exceed them: one request per second, bursts of three. */
+    private static final int BURST = 3;
+
+    @TestConfiguration(proxyBeanMethods = false)
+    static class RedisConfiguration {
+
+        @Bean
+        @ServiceConnection(name = "redis")
+        GenericContainer<?> redisContainer() {
+            return new GenericContainer<>(DockerImageName.parse("redis:8.8.3-alpine")).withExposedPorts(6379);
+        }
+    }
 
     private static final TestJwtIssuer issuer = TestJwtIssuer.start();
     private static final AtomicReference<String> forwardedAuthorization = new AtomicReference<>();
@@ -48,6 +68,8 @@ class GatewayApplicationTests {
         registry.add("KEYCLOAK_URL", issuer::baseUrl);
         registry.add("KEYCLOAK_ISSUER_URI", () -> TestJwtIssuer.ISSUER);
         registry.add("ORG_SERVICE_URL", () -> "http://localhost:" + orgService.getAddress().getPort());
+        registry.add("RATE_LIMIT_PER_SECOND", () -> 1);
+        registry.add("RATE_LIMIT_BURST", () -> BURST);
     }
 
     @BeforeEach
@@ -111,6 +133,29 @@ class GatewayApplicationTests {
     @Test
     void tokenSignedWithAnotherKeyIsRejected() {
         assertRejected(issuer.token("STUDENT").signedWith(TestJwtIssuer.newKey("test-key")).bearer());
+    }
+
+    @Test
+    void eachUserIsRateLimitedSeparately() {
+        String busyUser = issuer.token("STUDENT").bearer();
+        String otherUser = issuer.token("STUDENT").bearer();
+
+        List<Integer> statuses = new java.util.ArrayList<>();
+        for (int i = 0; i < BURST + 2; i++) {
+            statuses.add(client.get().uri("/api/v1/accounts/me")
+                    .header(HttpHeaders.AUTHORIZATION, busyUser)
+                    .exchange()
+                    .returnResult(String.class)
+                    .getStatus()
+                    .value());
+        }
+
+        assertThat(statuses).startsWith(200, 200, 200).contains(429);
+        client.get().uri("/api/v1/accounts/me")
+                .header(HttpHeaders.AUTHORIZATION, otherUser)
+                .exchange()
+                .expectStatus().isOk()
+                .expectHeader().exists("X-RateLimit-Remaining");
     }
 
     private void assertRejected(String bearer) {

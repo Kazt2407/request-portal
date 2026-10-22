@@ -1,6 +1,10 @@
 spring:
   application:
     name: gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6380}
   security:
     oauth2:
       resourceserver:
@@ -13,6 +17,14 @@ spring:
     gateway:
       server:
         webflux:
+          # Token bucket per user in Redis: a sustained rate with room for short bursts. Over the limit the
+          # gateway answers 429; if Redis is unreachable it lets requests through rather than failing the API.
+          default-filters:
+            - name: RequestRateLimiter
+              args:
+                redis-rate-limiter.replenishRate: ${RATE_LIMIT_PER_SECOND:10}
+                redis-rate-limiter.burstCapacity: ${RATE_LIMIT_BURST:30}
+                key-resolver: "#{@userKeyResolver}"
           routes:
             - id: org-service
               uri: ${ORG_SERVICE_URL:http://localhost:8081}
