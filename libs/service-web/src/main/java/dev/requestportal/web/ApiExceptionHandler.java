@@ -1,6 +1,5 @@
-package dev.requestportal.org.web;
+package dev.requestportal.web;
 
-import dev.requestportal.org.keycloak.IdentityProviderException;
 import java.util.Map;
 import java.util.TreeMap;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -18,13 +17,18 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
-/** Maps exceptions to RFC 9457 problem details. */
+/** Maps exceptions to RFC 9457 problem details; validation errors list a message per field. */
 @RestControllerAdvice
-class ApiExceptionHandler extends ResponseEntityExceptionHandler {
+public class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(NotFoundException.class)
     ProblemDetail handleNotFound(NotFoundException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, exception.getMessage());
+    }
+
+    @ExceptionHandler(ForbiddenException.class)
+    ProblemDetail handleForbidden(ForbiddenException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.FORBIDDEN, exception.getMessage());
     }
 
     @ExceptionHandler(ConflictException.class)
@@ -40,8 +44,7 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     ProblemDetail handleDataIntegrity(DataIntegrityViolationException exception) {
-        return ProblemDetail.forStatusAndDetail(
-                HttpStatus.CONFLICT, "The change conflicts with existing data");
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "The change conflicts with existing data");
     }
 
     @ExceptionHandler(BusinessRuleException.class)
@@ -49,16 +52,28 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_CONTENT, exception.getMessage());
     }
 
+    @ExceptionHandler(BulkOperationException.class)
+    ProblemDetail handleBulkOperation(BulkOperationException exception) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(
+                HttpStatus.UNPROCESSABLE_CONTENT, "The action failed for some items; nothing was changed");
+        problem.setProperty("failures", exception.getFailures());
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidFieldsException.class)
+    ProblemDetail handleInvalidFields(InvalidFieldsException exception) {
+        return invalidFields(ProblemDetail.forStatus(HttpStatus.BAD_REQUEST), exception.getErrors());
+    }
+
     @ExceptionHandler(PropertyReferenceException.class)
     ProblemDetail handleBadSort(PropertyReferenceException exception) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
     }
 
-    @ExceptionHandler(IdentityProviderException.class)
-    ProblemDetail handleIdentityProvider(IdentityProviderException exception) {
-        logger.error("Identity provider call failed", exception);
-        return ProblemDetail.forStatusAndDetail(
-                HttpStatus.BAD_GATEWAY, "The identity provider is unavailable; retry the change in a moment");
+    @ExceptionHandler(UpstreamServiceException.class)
+    ProblemDetail handleUpstream(UpstreamServiceException exception) {
+        logger.error("Upstream call failed", exception);
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_GATEWAY, exception.getDetail());
     }
 
     @Override
@@ -71,9 +86,13 @@ class ApiExceptionHandler extends ResponseEntityExceptionHandler {
         for (FieldError error : exception.getBindingResult().getFieldErrors()) {
             errors.putIfAbsent(error.getField(), error.getDefaultMessage());
         }
-        ProblemDetail problem = exception.getBody();
+        return handleExceptionInternal(
+                exception, invalidFields(exception.getBody(), errors), headers, status, request);
+    }
+
+    private static ProblemDetail invalidFields(ProblemDetail problem, Map<String, String> errors) {
         problem.setDetail("Some fields are invalid");
         problem.setProperty("errors", errors);
-        return handleExceptionInternal(exception, problem, headers, status, request);
+        return problem;
     }
 }

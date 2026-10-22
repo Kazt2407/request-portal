@@ -1,6 +1,6 @@
 package dev.requestportal.org.account;
 
-import dev.requestportal.org.web.PageResponse;
+import dev.requestportal.web.PageResponse;
 import dev.requestportal.security.CurrentUser;
 import dev.requestportal.security.Role;
 import jakarta.validation.Valid;

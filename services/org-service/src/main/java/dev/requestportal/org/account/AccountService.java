@@ -2,9 +2,9 @@ package dev.requestportal.org.account;
 
 import dev.requestportal.org.department.Department;
 import dev.requestportal.org.department.DepartmentRepository;
-import dev.requestportal.org.web.BusinessRuleException;
-import dev.requestportal.org.web.NotFoundException;
-import dev.requestportal.org.web.PageResponse;
+import dev.requestportal.web.BusinessRuleException;
+import dev.requestportal.web.NotFoundException;
+import dev.requestportal.web.PageResponse;
 import dev.requestportal.security.CurrentUser;
 import dev.requestportal.security.Role;
 import java.time.Instant;

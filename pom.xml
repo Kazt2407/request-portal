@@ -19,6 +19,8 @@
 
     <modules>
         <module>libs/service-security</module>
+        <module>libs/service-web</module>
+        <module>libs/test-support</module>
         <module>services/gateway</module>
         <module>services/org-service</module>
         <module>services/request-service</module>
@@ -36,6 +38,16 @@
             <dependency>
                 <groupId>dev.requestportal</groupId>
                 <artifactId>service-security</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.requestportal</groupId>
+                <artifactId>service-web</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>dev.requestportal</groupId>
+                <artifactId>test-support</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

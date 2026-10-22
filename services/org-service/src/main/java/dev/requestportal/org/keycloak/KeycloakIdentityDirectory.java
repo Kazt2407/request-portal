@@ -3,7 +3,7 @@ package dev.requestportal.org.keycloak;
 import static java.util.stream.Collectors.toSet;
 
 import dev.requestportal.org.account.IdentityDirectory;
-import dev.requestportal.org.web.NotFoundException;
+import dev.requestportal.web.NotFoundException;
 import dev.requestportal.security.Role;
 import java.util.Arrays;
 import java.util.HashMap;

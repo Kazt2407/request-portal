@@ -1,4 +1,4 @@
-package dev.requestportal.org.web;
+package dev.requestportal.web;
 
 import java.util.List;
 import java.util.function.Function;

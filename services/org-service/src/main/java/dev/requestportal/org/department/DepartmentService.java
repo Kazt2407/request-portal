@@ -1,7 +1,7 @@
 package dev.requestportal.org.department;
 
-import dev.requestportal.org.web.ConflictException;
-import dev.requestportal.org.web.NotFoundException;
+import dev.requestportal.web.ConflictException;
+import dev.requestportal.web.NotFoundException;
 import java.util.List;
 import java.util.Objects;
 import org.springframework.stereotype.Service;

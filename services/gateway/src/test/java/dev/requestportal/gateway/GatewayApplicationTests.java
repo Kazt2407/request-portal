@@ -2,25 +2,15 @@ package dev.requestportal.gateway;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.nimbusds.jose.JOSEException;
-import com.nimbusds.jose.JWSAlgorithm;
-import com.nimbusds.jose.JWSHeader;
-import com.nimbusds.jose.crypto.RSASSASigner;
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.RSAKey;
-import com.nimbusds.jose.jwk.gen.RSAKeyGenerator;
-import com.nimbusds.jwt.JWTClaimsSet;
-import com.nimbusds.jwt.SignedJWT;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import dev.requestportal.testsupport.TestJwtIssuer;
 import java.io.IOException;
+import java.io.OutputStream;
+import java.io.UncheckedIOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
-import java.util.Date;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.function.Consumer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,16 +25,15 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.web.reactive.server.WebTestClient;
 
 /**
- * Runs the gateway against a stub that plays both Keycloak (serving the signing keys) and org-service
- * (recording what the gateway forwards). Tokens are signed here, so no real Keycloak is needed.
+ * Runs the gateway against a stand-in Keycloak that signs tokens and a stub org-service that records
+ * what the gateway forwards, so no real Keycloak is needed.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GatewayApplicationTests {
 
-    private static final String ISSUER = "http://keycloak.test/realms/request-portal";
-    private static final RSAKey SIGNING_KEY = rsaKey("test-key");
+    private static final TestJwtIssuer issuer = TestJwtIssuer.start();
     private static final AtomicReference<String> forwardedAuthorization = new AtomicReference<>();
-    private static final HttpServer stub = startStub();
+    private static final HttpServer orgService = startOrgServiceStub();
 
     @Value("${local.server.port}")
     int port;
@@ -55,11 +44,10 @@ class GatewayApplicationTests {
     WebTestClient client;
 
     @DynamicPropertySource
-    static void pointAtStub(DynamicPropertyRegistry registry) {
-        String stubUrl = "http://localhost:" + stub.getAddress().getPort();
-        registry.add("KEYCLOAK_URL", () -> stubUrl);
-        registry.add("KEYCLOAK_ISSUER_URI", () -> ISSUER);
-        registry.add("ORG_SERVICE_URL", () -> stubUrl);
+    static void pointAtStubs(DynamicPropertyRegistry registry) {
+        registry.add("KEYCLOAK_URL", issuer::baseUrl);
+        registry.add("KEYCLOAK_ISSUER_URI", () -> TestJwtIssuer.ISSUER);
+        registry.add("ORG_SERVICE_URL", () -> "http://localhost:" + orgService.getAddress().getPort());
     }
 
     @BeforeEach
@@ -69,8 +57,9 @@ class GatewayApplicationTests {
     }
 
     @AfterAll
-    static void stopStub() {
-        stub.stop(0);
+    static void stopStubs() {
+        orgService.stop(0);
+        issuer.close();
     }
 
     @Test
@@ -94,94 +83,60 @@ class GatewayApplicationTests {
 
     @Test
     void validTokenIsForwardedUnchanged() {
-        String token = token(SIGNING_KEY, claims -> {});
+        String bearer = issuer.token("STUDENT").bearer();
 
         client.get().uri("/api/v1/accounts/me")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header(HttpHeaders.AUTHORIZATION, bearer)
                 .exchange()
                 .expectStatus().isOk();
 
-        assertThat(forwardedAuthorization.get()).isEqualTo("Bearer " + token);
+        assertThat(forwardedAuthorization.get()).isEqualTo(bearer);
     }
 
     @Test
     void tokenForAnotherAudienceIsRejected() {
-        assertRejected(token(SIGNING_KEY, claims -> claims.audience("some-other-api")));
+        assertRejected(issuer.token("STUDENT").audience("some-other-api").bearer());
     }
 
     @Test
     void tokenFromAnotherIssuerIsRejected() {
-        assertRejected(token(SIGNING_KEY, claims -> claims.issuer("http://evil.test/realms/request-portal")));
+        assertRejected(issuer.token("STUDENT").issuer("http://evil.test/realms/request-portal").bearer());
     }
 
     @Test
     void expiredTokenIsRejected() {
-        assertRejected(token(SIGNING_KEY, claims -> claims
-                .issueTime(Date.from(Instant.now().minusSeconds(3600)))
-                .expirationTime(Date.from(Instant.now().minusSeconds(1800)))));
+        assertRejected(issuer.token("STUDENT").expired().bearer());
     }
 
     @Test
     void tokenSignedWithAnotherKeyIsRejected() {
-        assertRejected(token(rsaKey("test-key"), claims -> {}));
+        assertRejected(issuer.token("STUDENT").signedWith(TestJwtIssuer.newKey("test-key")).bearer());
     }
 
-    private void assertRejected(String token) {
+    private void assertRejected(String bearer) {
         client.get().uri("/api/v1/accounts/me")
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
+                .header(HttpHeaders.AUTHORIZATION, bearer)
                 .exchange()
                 .expectStatus().isUnauthorized();
         assertThat(forwardedAuthorization.get()).isNull();
     }
 
-    private static String token(RSAKey key, Consumer<JWTClaimsSet.Builder> customizer) {
-        JWTClaimsSet.Builder claims = new JWTClaimsSet.Builder()
-                .issuer(ISSUER)
-                .subject("ed6b922f-57e8-4957-8885-df72a9d1bfc5")
-                .audience("request-portal-api")
-                .issueTime(new Date())
-                .expirationTime(Date.from(Instant.now().plusSeconds(300)))
-                .claim("roles", List.of("STUDENT"));
-        customizer.accept(claims);
-        try {
-            SignedJWT jwt = new SignedJWT(
-                    new JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.getKeyID()).build(), claims.build());
-            jwt.sign(new RSASSASigner(key));
-            return jwt.serialize();
-        } catch (JOSEException exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    private static RSAKey rsaKey(String keyId) {
-        try {
-            return new RSAKeyGenerator(2048).keyID(keyId).generate();
-        } catch (JOSEException exception) {
-            throw new IllegalStateException(exception);
-        }
-    }
-
-    private static HttpServer startStub() {
+    private static HttpServer startOrgServiceStub() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-            server.createContext("/realms/request-portal/protocol/openid-connect/certs",
-                    exchange -> respond(exchange, new JWKSet(SIGNING_KEY.toPublicJWK()).toString()));
             server.createContext("/api/", exchange -> {
                 forwardedAuthorization.set(exchange.getRequestHeaders().getFirst(HttpHeaders.AUTHORIZATION));
-                respond(exchange, "{\"ok\":true}");
+                byte[] body = "{\"ok\":true}".getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.sendResponseHeaders(200, body.length);
+                try (OutputStream out = exchange.getResponseBody()) {
+                    out.write(body);
+                }
             });
             server.start();
             return server;
         } catch (IOException exception) {
-            throw new IllegalStateException(exception);
+            throw new UncheckedIOException(exception);
         }
-    }
-
-    private static void respond(HttpExchange exchange, String json) throws IOException {
-        byte[] body = json.getBytes(StandardCharsets.UTF_8);
-        exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(200, body.length);
-        exchange.getResponseBody().write(body);
-        exchange.close();
     }
 }
