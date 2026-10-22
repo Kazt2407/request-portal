@@ -20,13 +20,22 @@ Role defaults come from the email domain at first sign-in; admins can change the
 
 ## 1. Identity and organization — `org-service` (phase 2)
 
-- Sign-in through Keycloak (OpenID Connect). An account is created on first sign-in.
-- Accounts have a name, an email, a department and one or more roles.
-- Admin: list and search accounts, change roles and departments.
-- Departments: code (used in request codes, e.g. `ACAD`) and name; admin can edit them.
-- Academic terms and school years, used as selectable field values.
-- Student profile: core data fetched from an external Student Information System (mocked here),
-  cached, with supplementary fields staff can edit. Student IDs are masked in responses.
+- Sign-in through Keycloak (OpenID Connect); see [ADR 0003](adr/0003-identity-with-keycloak.md).
+  An account is created on the user's first call to `GET /api/v1/accounts/me`.
+- Accounts have a name, an email, a department and one or more roles. Roles and department travel in
+  the access token, so every service can authorize requests on its own.
+- Admin: search accounts (accent-insensitive: "nguyen" finds "Nguyễn"), filter by role and department,
+  and change roles and department. Changes are written to Keycloak first, then to the local copy.
+- Rules: staff must belong to a department; admins cannot remove their own `ADMIN` role.
+- Departments: code (used in request codes, e.g. `ACAD`) and name; admins create and rename them.
+  Codes never change. Renames use optimistic locking.
+- In production, default roles come from the email domain through Keycloak identity-provider mappers.
+
+Moved to later phases, where they are first needed:
+
+- Academic terms and school years, used as selectable field values (phase 3).
+- Student profile: core data fetched from an external Student Information System (mocked), cached, with
+  supplementary fields staff can edit; student IDs masked in responses (phase 5, for form filling).
 
 ## 2. Request templates — `request-service` (phase 3)
 
