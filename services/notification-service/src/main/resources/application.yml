@@ -29,6 +29,8 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
     listener:
       concurrency: 3
+      # Continue the trace started by the HTTP request that caused the event (traceparent header).
+      observation-enabled: true
   mail:
     host: ${MAIL_HOST:localhost}
     port: ${MAIL_PORT:1025}
@@ -82,6 +84,33 @@ server:
   port: 8084
 
 management:
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    # Spans are always created (trace ids appear in logs); exporting needs a collector, so it is opt-in.
+    export:
+      enabled: ${OTEL_EXPORT_ENABLED:false}
+  opentelemetry:
+    tracing:
+      export:
+        otlp:
+          endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+  otlp:
+    metrics:
+      export:
+        enabled: ${OTEL_EXPORT_ENABLED:false}
+        url: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/metrics
+        step: 15s
+  observations:
+    enable:
+      # Polling jobs run every few seconds; tracing each run would bury the real traces. The outbox relay
+      # still traces each publish as part of the request that caused it.
+      tasks.scheduled.execution: false
+  metrics:
+    distribution:
+      # Histogram buckets, so dashboards can compute p95 and p99 across replicas.
+      percentiles-histogram:
+        http.server.requests: true
   endpoints:
     web:
       exposure:

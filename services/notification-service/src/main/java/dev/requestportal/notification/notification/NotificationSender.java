@@ -2,6 +2,7 @@ package dev.requestportal.notification.notification;
 
 import dev.requestportal.notification.org.DepartmentDirectory;
 import dev.requestportal.web.UpstreamServiceException;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.mail.MessagingException;
 import jakarta.mail.internet.MimeMessage;
 import java.time.Clock;
@@ -31,10 +32,11 @@ public class NotificationSender {
     private final SenderProperties properties;
     private final TransactionTemplate transaction;
     private final Clock clock;
+    private final MeterRegistry meters;
 
     NotificationSender(NotificationRepository notifications, DepartmentDirectory departments, JavaMailSender mail,
             MailProperties mailProperties, SenderProperties properties,
-            PlatformTransactionManager transactionManager, Clock clock) {
+            PlatformTransactionManager transactionManager, Clock clock, MeterRegistry meters) {
         this.notifications = notifications;
         this.departments = departments;
         this.mail = mail;
@@ -42,6 +44,7 @@ public class NotificationSender {
         this.properties = properties;
         this.transaction = new TransactionTemplate(transactionManager);
         this.clock = clock;
+        this.meters = meters;
     }
 
     @Scheduled(fixedDelayString = "${portal.sender.poll-interval}")
@@ -73,15 +76,22 @@ public class NotificationSender {
         }
         if (recipient.isEmpty()) {
             notification.skipped("Department " + notification.getRecipientDepartment() + " has no mailbox");
+            count(notification, "skipped");
             return;
         }
         try {
             mail.send(message(notification, recipient.get()));
             notification.sent(now);
+            count(notification, "sent");
         } catch (MailException | MessagingException exception) {
             log.warn("Sending notification {} to {} failed", notification.getId(), recipient.get(), exception);
             notification.attemptFailed(exception.getMessage(), now, properties.maxAttempts());
+            count(notification, "failed_attempt");
         }
+    }
+
+    private void count(Notification notification, String outcome) {
+        meters.counter("notifications.delivery", "kind", notification.getKind().name(), "outcome", outcome).increment();
     }
 
     private Optional<String> recipientOf(Notification notification) {

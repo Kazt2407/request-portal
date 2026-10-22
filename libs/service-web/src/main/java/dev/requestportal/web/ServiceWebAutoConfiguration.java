@@ -1,7 +1,11 @@
 package dev.requestportal.web;
 
+import io.micrometer.observation.ObservationPredicate;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnWebApplication;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 /**
@@ -12,4 +16,14 @@ import org.springframework.context.annotation.Import;
 @ConditionalOnWebApplication(type = ConditionalOnWebApplication.Type.SERVLET)
 @Import(ApiExceptionHandler.class)
 public class ServiceWebAutoConfiguration {
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnClass(ObservationPredicate.class)
+    static class ObservationConfiguration {
+
+        @Bean
+        ObservationPredicate skipActuatorObservations() {
+            return ActuatorObservationFilter.skipActuator();
+        }
+    }
 }

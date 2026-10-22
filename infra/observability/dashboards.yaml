@@ -1,0 +1,7 @@
+# Loads the Request Portal dashboard into the Grafana of the otel-lgtm image.
+apiVersion: 1
+providers:
+  - name: Request Portal
+    type: file
+    options:
+      path: /otel-lgtm/request-portal-dashboards

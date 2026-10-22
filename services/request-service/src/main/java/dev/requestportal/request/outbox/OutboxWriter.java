@@ -4,10 +4,14 @@ import dev.requestportal.request.workflow.Actor;
 import dev.requestportal.request.workflow.ServiceRequest;
 import dev.requestportal.request.workflow.WorkflowEvent;
 import dev.requestportal.request.workflow.WorkflowEventSink;
+import io.micrometer.tracing.Span;
+import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
 import java.sql.Timestamp;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
@@ -24,20 +28,24 @@ public class OutboxWriter implements WorkflowEventSink {
     private final JdbcClient jdbc;
     private final JsonMapper json;
     private final OutboxProperties properties;
+    private final Tracer tracer;
 
-    OutboxWriter(JdbcClient jdbc, JsonMapper json, OutboxProperties properties) {
+    OutboxWriter(JdbcClient jdbc, JsonMapper json, OutboxProperties properties, ObjectProvider<Tracer> tracer) {
         this.jdbc = jdbc;
         this.json = json;
         this.properties = properties;
+        this.tracer = tracer.getIfAvailable(() -> Tracer.NOOP);
     }
 
     @Override
     public void append(ServiceRequest request) {
+        String traceParent = currentTraceParent();
         for (WorkflowEvent event : request.drainEvents()) {
             UUID eventId = UUID.randomUUID();
             jdbc.sql("""
-                            insert into outbox_event (event_id, topic, message_key, event_type, payload, created_at)
-                            values (:eventId, :topic, :key, :type, cast(:payload as jsonb), :createdAt)
+                            insert into outbox_event
+                                (event_id, topic, message_key, event_type, payload, created_at, trace_parent)
+                            values (:eventId, :topic, :key, :type, cast(:payload as jsonb), :createdAt, :traceParent)
                             """)
                     .param("eventId", eventId)
                     .param("topic", properties.topic())
@@ -45,8 +53,23 @@ public class OutboxWriter implements WorkflowEventSink {
                     .param("type", event.type().name())
                     .param("payload", json.writeValueAsString(envelope(eventId, request, event)))
                     .param("createdAt", Timestamp.from(event.occurredAt()))
+                    .param("traceParent", traceParent)
                     .update();
         }
+    }
+
+    /** W3C traceparent of the current span, or {@code null} when nothing is being traced. */
+    private String currentTraceParent() {
+        Span span = tracer.currentSpan();
+        if (span == null) {
+            return null;
+        }
+        TraceContext context = span.context();
+        if (context.traceId().length() != 32 || context.spanId().length() != 16) {
+            return null;
+        }
+        return "00-" + context.traceId() + "-" + context.spanId() + "-"
+                + (Boolean.TRUE.equals(context.sampled()) ? "01" : "00");
     }
 
     private static Map<String, Object> envelope(UUID eventId, ServiceRequest request, WorkflowEvent event) {
