@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -45,6 +46,14 @@ public class RequestQueryService {
     /** Staff see requests involving their department; admins see all and may filter by department. */
     @Transactional(readOnly = true)
     public PageResponse<RequestViews.Summary> search(CurrentUser user, RequestFilter filter, Pageable pageable) {
+        return scoped(user, filter)
+                .map(spec -> page(spec, pageable))
+                .orElseGet(() -> PageResponse.of(Page.<ServiceRequest>empty(pageable),
+                        request -> RequestViews.Summary.of(request, clock.instant())));
+    }
+
+    /** The filter plus the caller's scope, or empty when the caller can see nothing (staff without department). */
+    public Optional<Specification<ServiceRequest>> scoped(CurrentUser user, RequestFilter filter) {
         List<Specification<ServiceRequest>> specs = new ArrayList<>();
         specs.add(RequestSpecifications.matching(filter, zone));
         String ownDepartment = user.departmentCode();
@@ -55,12 +64,12 @@ public class RequestQueryService {
         } else if (ownDepartment != null) {
             specs.add(RequestSpecifications.involvingDepartment(ownDepartment));
         } else {
-            return PageResponse.of(Page.<ServiceRequest>empty(pageable), request -> RequestViews.Summary.of(request, clock.instant()));
+            return Optional.empty();
         }
         if (Boolean.TRUE.equals(filter.awaitingMe()) && ownDepartment != null) {
             specs.add(RequestSpecifications.awaitingDepartment(ownDepartment));
         }
-        return page(Specification.allOf(specs), pageable);
+        return Optional.of(Specification.allOf(specs));
     }
 
     /** Requests the user may not see are reported as missing, so their existence is not leaked. */
