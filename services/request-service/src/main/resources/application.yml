@@ -19,10 +19,6 @@ spring:
     web:
       pageable:
         max-page-size: 100
-  jackson:
-    deserialization:
-      # Jackson 3 rejects omitted boolean flags by default; an omitted flag such as "required" means false.
-      fail-on-null-for-primitives: false
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
     producer:

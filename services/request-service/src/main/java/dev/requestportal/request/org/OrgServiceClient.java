@@ -3,6 +3,7 @@ package dev.requestportal.request.org;
 import static java.util.stream.Collectors.toCollection;
 import static java.util.stream.Collectors.toSet;
 
+import dev.requestportal.security.BearerTokenRelay;
 import dev.requestportal.web.UpstreamServiceException;
 import java.net.http.HttpClient;
 import java.time.Clock;

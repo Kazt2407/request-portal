@@ -1,4 +1,4 @@
-package dev.requestportal.request.org;
+package dev.requestportal.security;
 
 import java.io.IOException;
 import org.springframework.http.HttpRequest;
@@ -10,7 +10,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
 
 /** Calls other services on behalf of the signed-in user by forwarding their access token. */
-final class BearerTokenRelay implements ClientHttpRequestInterceptor {
+public final class BearerTokenRelay implements ClientHttpRequestInterceptor {
 
     @Override
     public ClientHttpResponse intercept(HttpRequest request, byte[] body, ClientHttpRequestExecution execution)
