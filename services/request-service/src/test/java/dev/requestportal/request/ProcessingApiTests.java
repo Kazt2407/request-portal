@@ -76,6 +76,14 @@ class ProcessingApiTests extends ApiTestSupport {
 
         assertThat(complete(ACAD_STAFF, requestId, 1)).hasStatus(HttpStatus.UNPROCESSABLE_CONTENT);
 
+        var foreignFile = mvc.post().uri("/api/v1/requests/{id}/steps/1/complete", requestId)
+                .header(AUTHORIZATION, bearer(ACAD_STAFF))
+                .contentType(APPLICATION_JSON)
+                .content("{\"attachmentIds\": [\"%s\"]}".formatted(FOREIGN_FILE))
+                .exchange();
+        assertThat(foreignFile).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(json(foreignFile).read("$.errors.attachmentIds", String.class)).contains("uploaded by someone else");
+
         String fileId = UUID.randomUUID().toString();
         var withFile = mvc.post().uri("/api/v1/requests/{id}/steps/1/complete", requestId)
                 .header(AUTHORIZATION, bearer(ACAD_STAFF))

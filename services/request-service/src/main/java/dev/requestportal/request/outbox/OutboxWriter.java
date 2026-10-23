@@ -101,6 +101,8 @@ public class OutboxWriter implements WorkflowEventSink {
             case WorkflowEvent.RequestSubmitted submitted -> {
                 data.put("stepCount", submitted.stepCount());
                 data.put("expectedDays", submitted.expectedDays());
+                data.put("fileIds", submitted.fileIds().stream().map(Object::toString).toList());
+                data.put("stepDepartments", submitted.stepDepartments());
             }
             case WorkflowEvent.StepStarted started -> {
                 data.put("position", started.position());
@@ -114,6 +116,7 @@ public class OutboxWriter implements WorkflowEventSink {
                 data.put("status", finished.status().name());
                 data.put("finishedBy", actor(finished.finishedBy()));
                 data.put("note", finished.note());
+                data.put("attachmentIds", finished.attachmentIds().stream().map(Object::toString).toList());
             }
             case WorkflowEvent.RequestCompleted completed ->
                     data.put("resultDepartmentCode", completed.resultDepartmentCode());

@@ -1,10 +1,14 @@
 package dev.requestportal.request.workflow;
 
+import dev.requestportal.request.file.FileDirectory;
 import dev.requestportal.request.org.OrgDirectory;
+import dev.requestportal.request.template.FieldType;
 import dev.requestportal.request.template.RequestTemplate;
 import dev.requestportal.request.template.TemplateField;
 import dev.requestportal.web.InvalidFieldsException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,9 +26,11 @@ class FieldValueValidator {
     static final int MAX_FILES = 10;
 
     private final OrgDirectory orgDirectory;
+    private final FileDirectory fileDirectory;
 
-    FieldValueValidator(OrgDirectory orgDirectory) {
+    FieldValueValidator(OrgDirectory orgDirectory, FileDirectory fileDirectory) {
         this.orgDirectory = orgDirectory;
+        this.fileDirectory = fileDirectory;
     }
 
     List<SubmittedValue> validate(RequestTemplate template, Map<String, Object> input) {
@@ -52,10 +58,41 @@ class FieldValueValidator {
                 }
             }
         }
+        checkFiles(values, errors);
         if (!errors.isEmpty()) {
             throw new InvalidFieldsException(errors);
         }
         return values;
+    }
+
+    /** One call to document-service for all files: they must be the submitter's own, uploaded, unused. */
+    private void checkFiles(List<SubmittedValue> values, Map<String, String> errors) {
+        List<SubmittedValue> fileValues = values.stream().filter(value -> value.field().getType().holdsFiles()).toList();
+        if (fileValues.isEmpty()) {
+            return;
+        }
+        Collection<UUID> ids = new HashSet<>();
+        fileValues.forEach(value -> value.value().forEach(id -> ids.add(UUID.fromString(id))));
+        Map<UUID, FileDirectory.FileCheck> checks = fileDirectory.check(ids);
+        for (SubmittedValue value : fileValues) {
+            for (String id : value.value()) {
+                String error = fileError(checks.get(UUID.fromString(id)), value.field().getType());
+                if (error != null) {
+                    errors.putIfAbsent(value.field().getKey(), error);
+                }
+            }
+        }
+    }
+
+    static String fileError(FileDirectory.FileCheck check, FieldType type) {
+        if (check == null || check.problem() != null) {
+            return "file " + (check == null ? "?" : check.label()) + " "
+                    + (check == null ? "could not be checked" : check.problem());
+        }
+        if (type == FieldType.IMAGE && !check.isImage()) {
+            return "file " + check.label() + " is not an image";
+        }
+        return null;
     }
 
     /** Blank text and empty lists count as "no value"; other JSON types (numbers, objects) are rejected. */

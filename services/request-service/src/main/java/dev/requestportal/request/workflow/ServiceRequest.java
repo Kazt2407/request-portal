@@ -136,8 +136,14 @@ public class ServiceRequest {
         request.currentStep = first.getPosition();
         request.record(HistoryAction.SUBMITTED, null, requester, null, now);
         int totalDays = request.steps.stream().mapToInt(RequestStep::getSlaDays).sum();
-        request.pendingEvents.add(new WorkflowEvent.RequestSubmitted(
-                request.steps.size(), template.isShowProcessingTime() ? totalDays : null, now));
+        List<UUID> fileIds = values.stream()
+                .filter(value -> value.field().getType().holdsFiles())
+                .flatMap(value -> value.value().stream())
+                .map(UUID::fromString)
+                .toList();
+        List<String> departments = request.steps.stream().map(RequestStep::getDepartmentCode).distinct().toList();
+        request.pendingEvents.add(new WorkflowEvent.RequestSubmitted(request.steps.size(),
+                template.isShowProcessingTime() ? totalDays : null, fileIds, departments, now));
         request.started(first, now);
         return request;
     }
@@ -260,8 +266,8 @@ public class ServiceRequest {
     }
 
     private void finished(RequestStep step, Instant now) {
-        pendingEvents.add(new WorkflowEvent.StepFinished(
-                step.getPosition(), step.getDepartmentCode(), step.getStatus(), step.getFinishedBy(), step.getNote(), now));
+        pendingEvents.add(new WorkflowEvent.StepFinished(step.getPosition(), step.getDepartmentCode(),
+                step.getStatus(), step.getFinishedBy(), step.getNote(), step.getAttachmentIds(), now));
     }
 
     private void finish(RequestStatus finalStatus, Instant now) {

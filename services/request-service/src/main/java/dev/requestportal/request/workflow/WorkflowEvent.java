@@ -1,6 +1,8 @@
 package dev.requestportal.request.workflow;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Something that happened to a request, recorded by {@link ServiceRequest} and published to Kafka
@@ -21,8 +23,13 @@ public sealed interface WorkflowEvent {
         REQUEST_CANCELLED
     }
 
-    /** @param expectedDays total of the steps' deadlines, or {@code null} if the template hides it */
-    record RequestSubmitted(int stepCount, Integer expectedDays, Instant occurredAt) implements WorkflowEvent {
+    /**
+     * @param expectedDays    total of the steps' deadlines, or {@code null} if the template hides it
+     * @param fileIds         files submitted in FILE and IMAGE fields
+     * @param stepDepartments every department with a step, in step order
+     */
+    record RequestSubmitted(int stepCount, Integer expectedDays, List<UUID> fileIds, List<String> stepDepartments,
+            Instant occurredAt) implements WorkflowEvent {
 
         public Type type() {
             return Type.REQUEST_SUBMITTED;
@@ -37,9 +44,12 @@ public sealed interface WorkflowEvent {
         }
     }
 
-    /** @param finishedBy who completed or rejected the step; {@code null} when it was cancelled */
+    /**
+     * @param finishedBy    who completed or rejected the step; {@code null} when it was cancelled
+     * @param attachmentIds files the department attached when completing the step
+     */
     record StepFinished(int position, String departmentCode, StepStatus status, Actor finishedBy, String note,
-            Instant occurredAt) implements WorkflowEvent {
+            List<UUID> attachmentIds, Instant occurredAt) implements WorkflowEvent {
 
         public Type type() {
             return Type.STEP_FINISHED;

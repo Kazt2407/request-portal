@@ -12,6 +12,7 @@ import com.jayway.jsonpath.Configuration;
 import com.jayway.jsonpath.DocumentContext;
 import com.jayway.jsonpath.JsonPath;
 import com.jayway.jsonpath.Option;
+import dev.requestportal.request.file.FileDirectory;
 import dev.requestportal.request.org.OrgDirectory;
 import dev.requestportal.testsupport.TestJwtIssuer;
 import java.nio.charset.StandardCharsets;
@@ -21,6 +22,8 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -46,6 +49,10 @@ abstract class ApiTestSupport {
     static final Set<String> DEPARTMENTS = Set.of("ACAD", "FIN", "STU", "IT");
     static final Set<String> TERMS = Set.of("2026-2027-1", "2026-2027-2");
     static final Set<String> SCHOOL_YEARS = Set.of("2025-2026", "2026-2027");
+    /** document-service says this file was uploaded by someone else; every other id is a usable PDF. */
+    static final UUID FOREIGN_FILE = UUID.fromString("f0000000-0000-4000-8000-000000000001");
+    /** document-service says this file is a usable PNG image. */
+    static final UUID IMAGE_FILE = UUID.fromString("f0000000-0000-4000-8000-000000000002");
 
     static final TestUser AN = new TestUser("Nguyễn", "Văn An", "an.nguyen@student.example.edu", null, "STUDENT");
     static final TestUser BINH = new TestUser("Trần", "Thị Bình", "binh.tran@student.example.edu", null, "STUDENT");
@@ -69,6 +76,9 @@ abstract class ApiTestSupport {
     @MockitoBean
     protected OrgDirectory orgDirectory;
 
+    @MockitoBean
+    protected FileDirectory fileDirectory;
+
     @DynamicPropertySource
     static void useTestIssuer(DynamicPropertyRegistry registry) {
         registry.add("KEYCLOAK_URL", issuer::baseUrl);
@@ -84,7 +94,22 @@ abstract class ApiTestSupport {
         given(orgDirectory.termExists(anyString())).willAnswer(invocation -> TERMS.contains(invocation.<String>getArgument(0)));
         given(orgDirectory.schoolYearExists(anyString()))
                 .willAnswer(invocation -> SCHOOL_YEARS.contains(invocation.<String>getArgument(0)));
+        given(fileDirectory.check(any())).willAnswer(invocation -> {
+            Collection<UUID> ids = invocation.getArgument(0);
+            return ids.stream().collect(Collectors.toMap(Function.identity(), ApiTestSupport::fileCheck));
+        });
     }
+
+    private static FileDirectory.FileCheck fileCheck(UUID id) {
+        if (id.equals(FOREIGN_FILE)) {
+            return new FileDirectory.FileCheck(id, "someone-else.pdf", "application/pdf", "was uploaded by someone else");
+        }
+        if (id.equals(IMAGE_FILE)) {
+            return new FileDirectory.FileCheck(id, "photo.png", "image/png", null);
+        }
+        return new FileDirectory.FileCheck(id, "scan.pdf", "application/pdf", null);
+    }
+
 
     record TestUser(UUID id, String familyName, String givenName, String email, String department, String role) {
 

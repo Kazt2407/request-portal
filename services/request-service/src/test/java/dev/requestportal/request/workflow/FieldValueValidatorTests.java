@@ -3,6 +3,7 @@ package dev.requestportal.request.workflow;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowableOfType;
 
+import dev.requestportal.request.file.FileDirectory;
 import dev.requestportal.request.org.OrgDirectory;
 import dev.requestportal.request.template.Audience;
 import dev.requestportal.request.template.FieldType;
@@ -17,6 +18,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class FieldValueValidatorTests {
@@ -36,7 +39,8 @@ class FieldValueValidatorTests {
         public boolean schoolYearExists(String schoolYear) {
             return schoolYear.equals("2026-2027");
         }
-    });
+    }, ids -> ids.stream().collect(Collectors.toMap(Function.identity(),
+            id -> new FileDirectory.FileCheck(id, "photo.png", "image/png", null))));
 
     private final RequestTemplate template = new RequestTemplate(new TemplateRequest(
             "Everything", null, "ACAD", Audience.ALL, TemplateStatus.ACTIVE, false,

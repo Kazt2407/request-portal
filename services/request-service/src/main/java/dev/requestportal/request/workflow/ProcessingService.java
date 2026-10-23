@@ -1,10 +1,12 @@
 package dev.requestportal.request.workflow;
 
+import dev.requestportal.request.file.FileDirectory;
 import dev.requestportal.security.CurrentUser;
 import dev.requestportal.web.BulkOperationException;
 import dev.requestportal.web.BusinessRuleException;
 import dev.requestportal.web.ConflictException;
 import dev.requestportal.web.ForbiddenException;
+import dev.requestportal.web.InvalidFieldsException;
 import dev.requestportal.web.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
@@ -12,6 +14,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
@@ -25,13 +28,15 @@ public class ProcessingService {
     private final ServiceRequestRepository requests;
     private final RequestQueryService queries;
     private final WorkflowEventSink events;
+    private final FileDirectory fileDirectory;
     private final Clock clock;
 
-    public ProcessingService(
-            ServiceRequestRepository requests, RequestQueryService queries, WorkflowEventSink events, Clock clock) {
+    public ProcessingService(ServiceRequestRepository requests, RequestQueryService queries, WorkflowEventSink events,
+            FileDirectory fileDirectory, Clock clock) {
         this.requests = requests;
         this.queries = queries;
         this.events = events;
+        this.fileDirectory = fileDirectory;
         this.clock = clock;
     }
 
@@ -40,6 +45,7 @@ public class ProcessingService {
             Long id, int position, RequestBodies.CompleteStep body, CurrentUser user) {
         return change(id, user, (request, now) -> {
             RequestAccess.requireProcessor(request, step(request, position), user);
+            checkAttachments(body.attachmentIdsOrEmpty());
             request.completeStep(position, Actor.of(user), body.note(), body.attachmentIdsOrEmpty(), now);
         });
     }
@@ -137,6 +143,20 @@ public class ProcessingService {
         }
         requests.flush();
         return new RequestBodies.BulkResult(codes.size(), codes);
+    }
+
+    /** Attachments must be files the staff member uploaded themselves and that no request uses yet. */
+    private void checkAttachments(List<UUID> attachmentIds) {
+        if (attachmentIds.isEmpty()) {
+            return;
+        }
+        var checks = fileDirectory.check(attachmentIds);
+        for (var id : attachmentIds) {
+            String error = FieldValueValidator.fileError(checks.get(id), dev.requestportal.request.template.FieldType.FILE);
+            if (error != null) {
+                throw new InvalidFieldsException(Map.of("attachmentIds", error));
+            }
+        }
     }
 
     private static RequestStep step(ServiceRequest request, int position) {

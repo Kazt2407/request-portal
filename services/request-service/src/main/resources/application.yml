@@ -49,6 +49,8 @@ portal:
     cleanup-cron: "0 15 3 * * *"
   org-service:
     url: ${ORG_SERVICE_URL:http://localhost:8081}
+  document-service:
+    url: ${DOCUMENT_SERVICE_URL:http://localhost:8083}
   time-zone: Asia/Ho_Chi_Minh
 
 server:

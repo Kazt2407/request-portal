@@ -65,6 +65,35 @@ class SubmissionApiTests extends ApiTestSupport {
     }
 
     @Test
+    void filesMustBeTheSubmittersOwnUploads() throws Exception {
+        long templateId = createAcadThenFinTemplate();
+
+        var result = submit(AN, templateId, """
+                {"reason": "Scholarship", "evidence": ["%s"]}
+                """.formatted(FOREIGN_FILE));
+
+        assertThat(result).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(json(result).read("$.errors.evidence", String.class))
+                .isEqualTo("file someone-else.pdf was uploaded by someone else");
+    }
+
+    @Test
+    void imageFieldsOnlyAcceptImages() throws Exception {
+        long templateId = createTemplate("""
+                {"title": "%s", "departmentCode": "STU", "audience": "STUDENT", "status": "ACTIVE",
+                 "fields": [{"key": "portrait", "label": "Portrait", "type": "IMAGE", "required": true}],
+                 "steps": [{"departmentCode": "STU", "description": "Print the card", "slaDays": 1}]}
+                """.formatted(uniqueTitle("Student card")));
+
+        var pdf = submit(AN, templateId, "{\"portrait\": [\"%s\"]}".formatted(UUID.randomUUID()));
+        assertThat(pdf).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(json(pdf).read("$.errors.portrait", String.class)).isEqualTo("file scan.pdf is not an image");
+
+        assertThat(submit(AN, templateId, "{\"portrait\": [\"%s\"]}".formatted(IMAGE_FILE)))
+                .hasStatus(HttpStatus.CREATED);
+    }
+
+    @Test
     void templatesForAnotherAudienceCannotBeUsed() throws Exception {
         long lecturerTemplate = createTemplate("""
                 {"title": "%s", "departmentCode": "ACAD", "audience": "LECTURER", "status": "ACTIVE",

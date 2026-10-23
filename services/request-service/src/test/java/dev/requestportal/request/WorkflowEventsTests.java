@@ -64,6 +64,7 @@ class WorkflowEventsTests extends ApiTestSupport {
         assertThat(events).extracting(event -> event.read("$.data.position", Integer.class))
                 .containsExactly(null, 1, 1, 2, 2, null);
         assertThat(events.get(2).read("$.data.finishedBy.name", String.class)).isEqualTo("Lê Văn Cường");
+        assertThat(events.get(2).<List<String>>read("$.data.attachmentIds")).isEmpty();
         assertThat(events.getLast().read("$.data.resultDepartmentCode", String.class)).isEqualTo("FIN");
     }
 
@@ -81,6 +82,8 @@ class WorkflowEventsTests extends ApiTestSupport {
         assertThat(submitted.read("$.request.requester.name", String.class)).isEqualTo("Trần Thị Bình");
         assertThat(submitted.read("$.request.requester.email", String.class)).isEqualTo(BINH.email());
         assertThat(submitted.read("$.data.stepCount", Integer.class)).isEqualTo(2);
+        assertThat(submitted.<List<String>>read("$.data.stepDepartments")).containsExactly("ACAD", "FIN");
+        assertThat(submitted.<List<String>>read("$.data.fileIds")).isEmpty();
         assertThat(stepStarted.read("$.data.departmentCode", String.class)).isEqualTo("ACAD");
         assertThat(stepStarted.read("$.data.dueAt", String.class)).isNotBlank();
     }
