@@ -52,6 +52,19 @@ resource "aws_s3_bucket_lifecycle_configuration" "documents" {
   }
 }
 
+# Browsers upload and download with pre-signed URLs, straight from the web app's origin.
+resource "aws_s3_bucket_cors_configuration" "documents" {
+  bucket = aws_s3_bucket.documents.id
+
+  cors_rule {
+    allowed_origins = [var.portal_url]
+    allowed_methods = ["GET", "PUT", "HEAD"]
+    allowed_headers = ["*"]
+    expose_headers  = ["ETag"]
+    max_age_seconds = 3600
+  }
+}
+
 # document-service reaches the bucket through EKS Pod Identity: no access keys in the cluster.
 data "aws_iam_policy_document" "document_service_trust" {
   statement {

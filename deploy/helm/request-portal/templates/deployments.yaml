@@ -116,6 +116,9 @@ spec:
               value: {{ .pathStyleAccess | quote }}
             - name: STORAGE_CREATE_BUCKET
               value: {{ .createBucket | quote }}
+            # With createBucket, the web app may upload and download directly (Terraform does this in AWS).
+            - name: STORAGE_CORS_ALLOWED_ORIGINS
+              value: {{ join "," (.corsAllowedOrigins | default (list $infra.portalUrl)) | quote }}
             {{- if .staticCredentials }}
             {{- range $variable, $key := dict "STORAGE_ACCESS_KEY" "storage-access-key" "STORAGE_SECRET_KEY" "storage-secret-key" }}
             - name: {{ $variable }}

@@ -66,6 +66,12 @@ variable "cache_node_type" {
   default = "cache.t4g.small"
 }
 
+variable "portal_url" {
+  description = "Public URL of the web app; browsers upload to and download from the bucket from this origin."
+  type        = string
+  default     = "https://portal.example.edu"
+}
+
 variable "mail_domain" {
   description = "Domain the notification emails are sent from; SES needs its DKIM records in DNS."
   type        = string

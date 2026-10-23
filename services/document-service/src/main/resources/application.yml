@@ -50,6 +50,8 @@ portal:
     # Bucket in the path (S3-compatible stores) rather than the host name (AWS).
     path-style-access: ${STORAGE_PATH_STYLE_ACCESS:true}
     create-bucket: ${STORAGE_CREATE_BUCKET:true}
+    # Origins of the web app (Vite dev server, local k3d), allowed to upload and download directly.
+    cors-allowed-origins: ${STORAGE_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8088}
     url-ttl: 15m
   files:
     max-size: 20MB

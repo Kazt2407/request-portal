@@ -11,6 +11,7 @@ import org.springframework.boot.ApplicationRunner;
 import org.springframework.http.ContentDisposition;
 import org.springframework.stereotype.Component;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.CORSRule;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.NoSuchBucketException;
@@ -92,23 +93,42 @@ public class ObjectStorage implements ApplicationRunner {
         s3.deleteObject(r -> r.bucket(properties.bucket()).key(key));
     }
 
-    /** Creates the bucket on startup when configured to (local development); in AWS Terraform owns it. */
+    /**
+     * Creates the bucket on startup when configured to (local development), and lets the web app's origins
+     * upload and download directly. In AWS Terraform owns the bucket and its CORS rules.
+     */
     @Override
     public void run(ApplicationArguments args) {
         if (!properties.createBucket()) {
             return;
         }
-        try {
-            s3.headBucket(r -> r.bucket(properties.bucket()));
-        } catch (NoSuchBucketException exception) {
+        if (!bucketExists()) {
             s3.createBucket(r -> r.bucket(properties.bucket()));
             log.info("Created bucket {}", properties.bucket());
+        }
+        if (!properties.corsAllowedOrigins().isEmpty()) {
+            s3.putBucketCors(r -> r.bucket(properties.bucket()).corsConfiguration(cors -> cors.corsRules(
+                    CORSRule.builder()
+                            .allowedOrigins(properties.corsAllowedOrigins())
+                            .allowedMethods("GET", "PUT", "HEAD")
+                            .allowedHeaders("*")
+                            .exposeHeaders("ETag")
+                            .maxAgeSeconds(3600)
+                            .build())));
+        }
+    }
+
+    private boolean bucketExists() {
+        try {
+            s3.headBucket(r -> r.bucket(properties.bucket()));
+            return true;
+        } catch (NoSuchBucketException exception) {
+            return false;
         } catch (S3Exception exception) {
             if (exception.statusCode() != 404) {
                 throw exception;
             }
-            s3.createBucket(r -> r.bucket(properties.bucket()));
-            log.info("Created bucket {}", properties.bucket());
+            return false;
         }
     }
 }
