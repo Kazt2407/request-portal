@@ -7,13 +7,17 @@ Each request moves through an ordered chain of department approval steps with de
 system notifies people by email and generates Word/Excel documents along the way.
 The full feature list is in [docs/features.md](docs/features.md).
 
-> Status: **phase 6 — documents**. The workflow, events and notifications run on Kubernetes from container
-> images built in CI, with distributed tracing from the API through Kafka to the emails, a Grafana
-> dashboard and measured performance (p95 under 50 ms at 120 requests per second on a laptop). Files go
-> straight to S3 with pre-signed URLs; users download Word forms filled with their data, staff export to
-> Excel and Word and download hundreds of requests' files as one ZIP built in the background. Terraform
-> for AWS and Ansible for k3s and Rancher are written and validated. The web app comes next; see the
-> [Roadmap](#roadmap).
+> Status: **all seven phases built**. A Vue web app serves requesters, department staff and admins; the
+> services behind it run on Kubernetes from images built in CI, with distributed tracing from the API
+> through Kafka to the emails, a Grafana dashboard and measured performance (p95 under 50 ms at 120
+> requests per second on a laptop). Files go straight to S3 with pre-signed URLs; users download Word
+> forms filled with their data, staff export to Excel and Word and download hundreds of requests' files as
+> one ZIP built in the background. Terraform for AWS and Ansible for k3s and Rancher are written and
+> validated. See the [Roadmap](#roadmap).
+
+| Department queue | A request, mid-way |
+|---|---|
+| ![Finance staff's queue of requests waiting for them](docs/images/staff-queue.png) | ![A transcript request: step 1 done with a stamped scan attached, step 2 in progress](docs/images/request-detail.png) |
 
 ## Architecture
 
@@ -51,7 +55,8 @@ Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 [the request workflow](docs/adr/0004-request-workflow.md),
 [events and notifications](docs/adr/0005-events-and-notifications.md),
 [deployment and operations](docs/adr/0006-deployment-and-operations.md),
-[files and documents](docs/adr/0007-files-and-documents.md).
+[files and documents](docs/adr/0007-files-and-documents.md),
+[the web app](docs/adr/0008-web-app.md).
 The Kafka event format is documented in [docs/events.md](docs/events.md), load test results in
 [docs/performance.md](docs/performance.md).
 
@@ -65,15 +70,16 @@ Keycloak that signs test tokens).
 - **Data and messaging:** PostgreSQL 18, Apache Kafka 4 (KRaft), Redis 8, Amazon S3 (AWS SDK v2; RustFS locally)
 - **Documents:** Apache POI (Word forms and exports, streaming Excel)
 - **Security:** Keycloak 26 (OpenID Connect), every service an OAuth2 resource server validating JWTs, Keycloak Admin API
-- **Testing:** JUnit 5, AssertJ, Testcontainers, k6 load tests
+- **Testing:** JUnit 5, AssertJ, Testcontainers, Vitest, Playwright end-to-end tests, k6 load tests
 - **Delivery:** Docker (layered, non-root images), GitHub Actions publishing to GHCR, Helm on Kubernetes (k3d
   locally), Terraform for AWS (EKS, RDS, MSK, ElastiCache, S3, SES), Ansible for k3s and Rancher
 - **Observability:** OpenTelemetry (traces across HTTP and Kafka, metrics over OTLP), Grafana, Tempo, Prometheus
-- **Frontend:** Vue 3 + TypeScript (phase 7)
+- **Frontend:** Vue 3, TypeScript, Vite, Keycloak sign-in with PKCE; served by unprivileged nginx
 
 ## Getting started
 
-Prerequisites: JDK 25 and Docker. Maven is provided by the wrapper (`./mvnw`).
+Prerequisites: JDK 25, Docker, and for the web app Node 22 with pnpm. Maven is provided by the wrapper
+(`./mvnw`).
 
 ```bash
 # 1. Start local infrastructure (PostgreSQL, Kafka, Redis, Keycloak, Mailpit, S3 storage)
@@ -94,6 +100,20 @@ docker compose -f infra/docker-compose.yml up -d
 ```
 
 Check it is up: `curl localhost:8080/actuator/health` (gateway); services answer on 8081–8084.
+
+### Web app
+
+```bash
+cd frontend
+pnpm install
+pnpm dev     # http://localhost:5173, proxies /api to the gateway on :8080
+pnpm test    # unit tests (Vitest)
+pnpm e2e     # end-to-end tests (Playwright) against the running stack; once: pnpm exec playwright install chromium
+```
+
+Sign in as any test user below. Requesters see their requests, a form to make new ones and fillable
+forms; staff see their department's queue and statistics; admins also manage templates, forms, accounts,
+departments and terms.
 
 ### Test users
 
@@ -186,8 +206,9 @@ Host ports are moved off the defaults so the stack can run next to other local p
 
 ## Run on Kubernetes
 
-The services run on a local k3d cluster with the Helm chart in [`deploy/helm`](deploy/helm/request-portal),
-using the docker compose infrastructure above. Needs `k3d`, `kubectl` and `helm`.
+The services and the web app run on a local k3d cluster with the Helm chart in
+[`deploy/helm`](deploy/helm/request-portal), using the docker compose infrastructure above. Needs `k3d`,
+`kubectl` and `helm`. The web app is at http://localhost:8088, the API under `/api` on the same origin.
 
 ```bash
 docker compose -f infra/docker-compose.yml up -d
@@ -198,7 +219,7 @@ scripts/k3d-down.sh                                         # delete the cluster
 
 The same chart deploys to AWS with the endpoints from [`deploy/terraform/aws`](deploy/terraform/aws), or to
 a server prepared with [`deploy/ansible`](deploy/ansible). CI publishes the images to
-`ghcr.io/kazt2407/request-portal/<service>` on every push to `main`.
+`ghcr.io/kazt2407/request-portal/<service>` (and `.../web`) on every push to `main`.
 
 ## Observability
 
@@ -229,7 +250,8 @@ run, which failed, and how traces and metrics found the cause.
   Terraform for AWS, tracing and dashboards, load tests, an Ansible playbook for k3s and Rancher
 - [x] **Phase 6 — Documents:** S3 uploads with pre-signed URLs, `.docx` form filling, Word and Excel
   exports, statistics, bulk ZIP jobs
-- [ ] **Phase 7 — Frontend:** a lean Vue 3 + TypeScript app over the API
+- [x] **Phase 7 — Web app:** Vue 3 + TypeScript for requesters, staff and admins, with unit and
+  end-to-end tests, an nginx image and the same Helm chart
 
 Phases are ordered by what a backend role values most: messaging and operations come before
 documents and the user interface.

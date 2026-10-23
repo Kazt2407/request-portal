@@ -139,11 +139,26 @@ See [ADR 0007](adr/0007-files-and-documents.md).
   30 minutes.
 - Housekeeping jobs delete abandoned uploads (> 24 h) and expired archives.
 
-## 7. Frontend — Vue 3 + TypeScript (phase 7)
+## 7. Web app — Vue 3 + TypeScript (phase 7)
 
-Role-based areas: requester (new request, my requests, request detail, forms, profile),
-staff (request queue, request detail, bulk download), admin (templates with fields and steps,
-forms, accounts, departments).
+See [ADR 0008](adr/0008-web-app.md). Navigation follows the roles in the access token; the services still
+check every action.
+
+- **Requesters**: their requests by status; choose a request type and fill in its form (choices, terms,
+  school years, file uploads with progress; a retried submit never creates two requests); a request's
+  details, steps with deadlines and attachments, and history; cancel before any step is done; download
+  the request as Word; fillable forms; their account and student record.
+- **Staff**: the department queue with search and filters (status, request type, collected, submission
+  dates, waiting for my department); complete a step with a note and attachments, or reject it with a
+  reason; select many requests to complete, reject or mark as collected at once (all or nothing, with the
+  reason for each failure); export the list to Excel; download the selected requests' files as a ZIP
+  built in the background; statistics by request type and department, with an Excel export.
+- **Admins**: everything staff see across all departments; request templates with ordered fields and
+  steps (keys suggested from Vietnamese labels); forms (upload the .docx, see which placeholders nothing
+  fills, add fields); accounts (roles, department, student records); departments; academic terms; and
+  each request's emails with their delivery status, retrying failed ones.
+- Validation messages from the API appear next to the fields they concern. Light and dark themes;
+  usable on a phone.
 
 ## 8. Deployment and operations (phase 5)
 
