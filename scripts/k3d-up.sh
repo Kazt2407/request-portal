@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Deploys the five services to a local k3d cluster with Helm. The infrastructure must already be running:
+# Deploys the five services and the web app to a local k3d cluster with Helm. The infrastructure must already be running:
 #   docker compose -f infra/docker-compose.yml up -d
-# Needs k3d, kubectl and helm. Set SKIP_BUILD=true to reuse the jars and images built last time.
+# Needs k3d, kubectl, helm and Docker (the web app is built inside Docker). Set SKIP_BUILD=true to reuse the jars and images built last time.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -21,8 +21,9 @@ if [ "${SKIP_BUILD:-false}" != "true" ]; then
   for service in "${services[@]}"; do
     docker build -q --build-arg SERVICE="$service" -t "request-portal/$service:dev" . >/dev/null
   done
+  docker build -q -t request-portal/web:dev frontend >/dev/null
 fi
-images=()
+images=(request-portal/web:dev)
 for service in "${services[@]}"; do
   images+=("request-portal/$service:dev")
 done
@@ -33,10 +34,11 @@ k3d image import --cluster "$cluster" "${images[@]}"
 helm upgrade --install request-portal deploy/helm/request-portal -f deploy/k3d/values.yaml ${HELM_EXTRA_ARGS:-}
 # The image tag stays "dev", so restart the pods to pick up the images just imported.
 kubectl rollout restart deployment -l app.kubernetes.io/part-of=request-portal
-for service in "${services[@]}"; do
-  kubectl rollout status "deployment/request-portal-$service" --timeout=5m
+for deployment in "${services[@]}" web; do
+  kubectl rollout status "deployment/request-portal-$deployment" --timeout=5m
 done
 
 kubectl get pods -l app.kubernetes.io/part-of=request-portal
 echo
-echo "API: http://localhost:8088/api/v1   Try: API_URL=http://localhost:8088/api/v1 scripts/demo-workflow.sh"
+echo "Web app: http://localhost:8088   API: http://localhost:8088/api/v1"
+echo "Try: API_URL=http://localhost:8088/api/v1 scripts/demo-workflow.sh"

@@ -1,0 +1,6 @@
+# Included by every location: nginx drops server-level add_header lines in a location that adds its own.
+# Scripts only from this origin; the API, Keycloak (tokens) and storage (direct uploads) are the only
+# places the app talks to.
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ${KEYCLOAK_URL} ${STORAGE_URL}; form-action 'self' ${KEYCLOAK_URL}; frame-ancestors 'none'; base-uri 'self'; object-src 'none'" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header Referrer-Policy "strict-origin-when-cross-origin" always;

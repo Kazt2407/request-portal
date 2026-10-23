@@ -1,0 +1,97 @@
+{{- if .Values.web.enabled }}
+{{- $ctx := dict "root" . "name" "web" }}
+{{- $web := .Values.web }}
+# The web app: static files and per-environment settings from nginx; the browser calls the API itself.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  replicas: {{ $web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "request-portal.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "request-portal.labels" $ctx | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "request-portal.serviceName" $ctx }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: web
+          image: "{{ .Values.image.registry }}/web:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: KEYCLOAK_URL
+              value: {{ $web.keycloak.url | quote }}
+            - name: KEYCLOAK_REALM
+              value: {{ $web.keycloak.realm | quote }}
+            - name: KEYCLOAK_CLIENT_ID
+              value: {{ $web.keycloak.clientId | quote }}
+            - name: STORAGE_URL
+              value: {{ $web.storageUrl | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          resources:
+            {{- toYaml $web.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # nginx writes its generated configuration and temporary files; nothing else is writable.
+            - name: config
+              mountPath: /etc/nginx/conf.d
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: config
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+spec:
+  selector:
+    {{- include "request-portal.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+{{- end }}

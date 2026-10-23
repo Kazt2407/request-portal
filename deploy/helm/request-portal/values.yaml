@@ -35,8 +35,10 @@ infrastructure:
     pathStyleAccess: false
     # Read the storage-access-key and storage-secret-key secrets instead of the AWS credential chain.
     staticCredentials: false
-    # Create the bucket on startup (local development only).
+    # Create the bucket on startup (local development only), letting these origins upload directly
+    # (default: portalUrl).
     createBucket: false
+    corsAllowedOrigins: []
   # Public URL of the web app, used for links in emails.
   portalUrl: https://portal.example.edu
 
@@ -119,6 +121,23 @@ services:
     database: notification_db
     databaseUser: notification_service
     databasePasswordKey: notification-db-password
+
+# The web app (frontend/), served by nginx at / next to the API.
+web:
+  enabled: true
+  replicas: 2
+  # Public addresses the browser uses: Keycloak to sign in, storage for direct uploads and downloads.
+  keycloak:
+    url: https://sso.example.edu
+    realm: request-portal
+    clientId: portal-spa
+  storageUrl: https://*.s3.ap-southeast-1.amazonaws.com
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
 
 ingress:
   enabled: true

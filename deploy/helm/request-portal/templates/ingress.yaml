@@ -1,6 +1,8 @@
 {{- if .Values.ingress.enabled }}
 {{- $ctx := dict "root" . "name" "gateway" }}
-# Only the gateway is exposed; the services are reachable inside the cluster only.
+{{- $web := dict "root" . "name" "web" }}
+# The web app and the API share one origin: no CORS, and cookies or tokens never cross sites. Only the
+# gateway is exposed; the services are reachable inside the cluster only.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -24,4 +26,13 @@ spec:
                 name: {{ include "request-portal.serviceName" $ctx }}
                 port:
                   name: http
+          {{- if .Values.web.enabled }}
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "request-portal.serviceName" $web }}
+                port:
+                  name: http
+          {{- end }}
 {{- end }}
