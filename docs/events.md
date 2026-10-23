@@ -34,9 +34,9 @@ Headers: `eventId`, `eventType`. Value: UTF-8 JSON.
 
 | Type | When | `data` |
 |---|---|---|
-| `REQUEST_SUBMITTED` | A request was submitted | `stepCount`, `expectedDays` (sum of step deadlines, or `null` if the template hides it) |
+| `REQUEST_SUBMITTED` | A request was submitted | `stepCount`, `expectedDays` (sum of step deadlines, or `null` if the template hides it), `stepDepartments` (department of each step, in order), `fileIds` (files uploaded for the request's fields) |
 | `STEP_STARTED` | A step became the current one (the first on submission, then each next one) | `position`, `departmentCode`, `description`, `dueAt` |
-| `STEP_FINISHED` | A step was completed, rejected or cancelled | `position`, `departmentCode`, `status` (`COMPLETED`, `REJECTED`, `CANCELLED`), `finishedBy` (`{id, name}`, `null` when cancelled), `note` |
+| `STEP_FINISHED` | A step was completed, rejected or cancelled | `position`, `departmentCode`, `status` (`COMPLETED`, `REJECTED`, `CANCELLED`), `finishedBy` (`{id, name}`, `null` when cancelled), `note`, `attachmentIds` (files staff attached to the step) |
 | `REQUEST_COMPLETED` | The last step was completed | `resultDepartmentCode` (who hands over the result) |
 | `REQUEST_REJECTED` | A step was rejected; later steps were cancelled | `position`, `departmentCode`, `reason` |
 | `REQUEST_CANCELLED` | The requester cancelled before any step was completed | none |
@@ -44,4 +44,11 @@ Headers: `eventId`, `eventType`. Value: UTF-8 JSON.
 A two-step request that goes through normally produces:
 `REQUEST_SUBMITTED, STEP_STARTED(1), STEP_FINISHED(1), STEP_STARTED(2), STEP_FINISHED(2), REQUEST_COMPLETED`.
 
-Messages notification-service cannot process are moved to **`request-events.DLT`** unchanged.
+## Consumers
+
+| Consumer group | Uses the events to | Dead-letter topic |
+|---|---|---|
+| `notification-service` | Send emails and schedule deadline reminders | `request-events.DLT` |
+| `document-service` | Attach uploaded files to their request and keep a copy of who may see each request, so file downloads are authorized without calling request-service | `request-events.document-service.DLT` |
+
+Messages a consumer cannot process are moved to its dead-letter topic unchanged.

@@ -7,11 +7,13 @@ Each request moves through an ordered chain of department approval steps with de
 system notifies people by email and generates Word/Excel documents along the way.
 The full feature list is in [docs/features.md](docs/features.md).
 
-> Status: **phase 5 — deployment and operations**. The workflow, events and notifications run on
-> Kubernetes from container images built in CI, with distributed tracing from the API through Kafka to the
-> emails, a Grafana dashboard and measured performance (p95 under 50 ms at 120 requests per second on a
-> laptop). Terraform for AWS and Ansible for k3s and Rancher are written and validated. Files and the web
-> app come next; see the [Roadmap](#roadmap).
+> Status: **phase 6 — documents**. The workflow, events and notifications run on Kubernetes from container
+> images built in CI, with distributed tracing from the API through Kafka to the emails, a Grafana
+> dashboard and measured performance (p95 under 50 ms at 120 requests per second on a laptop). Files go
+> straight to S3 with pre-signed URLs; users download Word forms filled with their data, staff export to
+> Excel and Word and download hundreds of requests' files as one ZIP built in the background. Terraform
+> for AWS and Ansible for k3s and Rancher are written and validated. The web app comes next; see the
+> [Roadmap](#roadmap).
 
 ## Architecture
 
@@ -25,6 +27,7 @@ flowchart LR
     req -- workflow events --> kafka[(Kafka)]
     kafka --> notif
     kafka --> doc
+    doc --- s3[(S3)]
     org --- pg1[(org_db)]
     req --- pg2[(request_db)]
     doc --- pg3[(document_db)]
@@ -35,10 +38,10 @@ flowchart LR
 
 | Service | Port | Responsibility |
 |---|---|---|
-| `gateway` | 8080 | Single entry point; routing and JWT validation (rate limiting later) |
+| `gateway` | 8080 | Single entry point; routing, JWT validation and per-user rate limiting |
 | `org-service` | 8081 | Accounts, roles, departments, academic terms, student profiles |
-| `request-service` | 8082 | Templates, submissions, approval workflow, audit log |
-| `document-service` | 8083 | Files on S3, `.docx`/`.xlsx` generation, bulk ZIP jobs |
+| `request-service` | 8082 | Templates, submissions, approval workflow, audit log, Excel and Word exports |
+| `document-service` | 8083 | Files on S3, filled-in `.docx` forms, bulk ZIP jobs |
 | `notification-service` | 8084 | Email notifications and deadline reminders from workflow events |
 
 Design decisions are recorded as ADRs in [docs/adr](docs/adr):
@@ -47,7 +50,8 @@ Design decisions are recorded as ADRs in [docs/adr](docs/adr):
 [identity with Keycloak](docs/adr/0003-identity-with-keycloak.md),
 [the request workflow](docs/adr/0004-request-workflow.md),
 [events and notifications](docs/adr/0005-events-and-notifications.md),
-[deployment and operations](docs/adr/0006-deployment-and-operations.md).
+[deployment and operations](docs/adr/0006-deployment-and-operations.md),
+[files and documents](docs/adr/0007-files-and-documents.md).
 The Kafka event format is documented in [docs/events.md](docs/events.md), load test results in
 [docs/performance.md](docs/performance.md).
 
@@ -58,7 +62,8 @@ Keycloak that signs test tokens).
 ## Tech stack
 
 - **Backend:** Java 25, Spring Boot 4.1, Spring Cloud Gateway, Spring Data JPA, Flyway
-- **Data and messaging:** PostgreSQL 18, Apache Kafka 4 (KRaft), Redis 8
+- **Data and messaging:** PostgreSQL 18, Apache Kafka 4 (KRaft), Redis 8, Amazon S3 (AWS SDK v2; RustFS locally)
+- **Documents:** Apache POI (Word forms and exports, streaming Excel)
 - **Security:** Keycloak 26 (OpenID Connect), every service an OAuth2 resource server validating JWTs, Keycloak Admin API
 - **Testing:** JUnit 5, AssertJ, Testcontainers, k6 load tests
 - **Delivery:** Docker (layered, non-root images), GitHub Actions publishing to GHCR, Helm on Kubernetes (k3d
@@ -71,15 +76,16 @@ Keycloak that signs test tokens).
 Prerequisites: JDK 25 and Docker. Maven is provided by the wrapper (`./mvnw`).
 
 ```bash
-# 1. Start local infrastructure (PostgreSQL, Kafka, Redis, Keycloak, Mailpit)
+# 1. Start local infrastructure (PostgreSQL, Kafka, Redis, Keycloak, Mailpit, S3 storage)
 docker compose -f infra/docker-compose.yml up -d
 
-# 2. Build everything and run the tests (tests start their own PostgreSQL with Testcontainers)
+# 2. Build everything and run the tests (tests start their own PostgreSQL, Kafka and storage with Testcontainers)
 ./mvnw verify
 
 # 3. Run the services against the local infrastructure (one terminal each)
 ./mvnw -pl services/org-service spring-boot:run
 ./mvnw -pl services/request-service spring-boot:run
+./mvnw -pl services/document-service spring-boot:run
 ./mvnw -pl services/notification-service spring-boot:run
 ./mvnw -pl services/gateway spring-boot:run
 
@@ -104,10 +110,12 @@ on first start. All passwords are `password` (local only).
 
 ### Try the API
 
-With all four services and the gateway running, `scripts/demo-workflow.sh` walks one request through the
+With all services and the gateway running, `scripts/demo-workflow.sh` walks one request through the
 whole workflow as three users: a student submits an official transcript request (and retries it safely),
 Academic Affairs and then Finance complete their steps, the student reads the history, and the script
-lists the emails that arrived in Mailpit (http://localhost:8025). It needs `jq`. The development data includes four sample templates, departments and academic terms.
+lists the emails that arrived in Mailpit (http://localhost:8025). Along the way, staff upload a scan straight
+to storage, the student downloads it and the request as a Word document, and staff download the request's
+files as a ZIP. It needs `jq` and `python3`. The development data includes four sample templates, departments and academic terms.
 
 `scripts/token.sh <username>` prints an access token for a test user, for your own calls:
 
@@ -143,10 +151,22 @@ curl -X PUT -H "Authorization: Bearer $(scripts/token.sh admin)" -H "Content-Typ
 | `POST /api/v1/requests/{id}/steps/{position}/complete`, `.../reject` | `STAFF` of the step's department | Process the current step |
 | `POST /api/v1/requests/bulk/complete`, `/bulk/reject` | `STAFF` | Process many requests, all or nothing |
 | `PUT /api/v1/requests/{id}/result-received`, `PUT /api/v1/requests/result-received` | `STAFF` of the last department | Record that the result was collected |
+| `GET /api/v1/requests/{id}/document` | requester, involved staff, admin | The request as a Word document |
+| `GET /api/v1/requests/export?<list filters>` | `STAFF`, `ADMIN` | The filtered request list as Excel |
+| `GET /api/v1/requests/statistics?submittedFrom=&submittedTo=&departmentCode=&templateId=`, `.../statistics/export` | `STAFF`, `ADMIN` | Outcomes by template and department, as JSON or Excel |
+| `GET /api/v1/profiles/me`, `GET`/`PUT /api/v1/profiles/{accountId}` | student / `STAFF`, `ADMIN` | Student profiles used on forms |
+| `POST /api/v1/files`, then `PUT` to the returned URL, then `POST /api/v1/files/{id}/complete` | signed in | Upload a file straight to storage |
+| `GET /api/v1/files/{id}`, `GET /api/v1/files/{id}/download` | uploader, or who may see its request | File details, a download URL |
+| `GET /api/v1/forms/available`, `GET /api/v1/forms/{id}` | signed in | Fillable forms for my role |
+| `POST /api/v1/forms/{id}/document` | signed in | The form filled with my data and the values I send, as `.docx` |
+| `GET /api/v1/forms`, `POST /api/v1/forms`, `PUT /api/v1/forms/{id}` | `ADMIN` | Manage forms (an uploaded `.docx` and its extra fields) |
+| `POST /api/v1/files/bulk-downloads/preview`, `POST /api/v1/files/bulk-downloads` | `STAFF`, `ADMIN` | Preview, then start a ZIP of many requests' files |
+| `GET /api/v1/files/bulk-downloads/{id}` | who started it, admin | Job status; a download URL when ready |
 | `GET /api/v1/notifications?requestId=&status=&kind=` | `ADMIN` | Emails and their delivery status |
 | `POST /api/v1/notifications/{id}/retry` | `ADMIN` | Resend a failed or skipped email |
 
-The gateway rate-limits each user per service (10 requests per second, bursts of 30) and answers `429` beyond that.
+The gateway rate-limits each user per service (10 requests per second, bursts of 30; filled-in forms 1 per
+second, bursts of 5) and answers `429` beyond that.
 
 Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, with per-field messages for validation errors.
 
@@ -159,6 +179,7 @@ Errors use [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) problem details, w
 | Redis | `localhost:6380` | none |
 | Keycloak | http://localhost:8180 (realm `request-portal`) | admin console: `admin` / `admin` |
 | Mailpit (catches all outgoing email) | http://localhost:8025 | none |
+| RustFS (S3-compatible storage, bucket `request-portal`) | API `localhost:9010`, console http://localhost:9011/rustfs/console/ | `portal` / `portal-storage-secret` |
 | Grafana with Tempo and Prometheus (`--profile observability`) | http://localhost:3000 | none |
 
 Host ports are moved off the defaults so the stack can run next to other local projects.
@@ -206,7 +227,8 @@ run, which failed, and how traces and metrics found the cause.
   reminders, Redis rate limiting in the gateway
 - [x] **Phase 5 — Deployment and operations:** container images, Helm chart on a local Kubernetes cluster,
   Terraform for AWS, tracing and dashboards, load tests, an Ansible playbook for k3s and Rancher
-- [ ] **Phase 6 — Documents:** S3 uploads, `.docx` form filling, Excel exports, bulk ZIP jobs
+- [x] **Phase 6 — Documents:** S3 uploads with pre-signed URLs, `.docx` form filling, Word and Excel
+  exports, statistics, bulk ZIP jobs
 - [ ] **Phase 7 — Frontend:** a lean Vue 3 + TypeScript app over the API
 
 Phases are ordered by what a backend role values most: messaging and operations come before

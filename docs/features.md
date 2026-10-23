@@ -34,8 +34,9 @@ Role defaults come from the email domain at first sign-in; admins can change the
 Moved to later phases, where they are first needed:
 
 - Academic terms and school years, used as selectable field values (phase 3).
-- Student profile: core data fetched from an external Student Information System (mocked), cached, with
-  supplementary fields staff can edit; student IDs masked in responses (phase 6, for form filling).
+- Student profile (phase 6, for form filling): student code, date of birth, class, faculty, major and
+  phone. Students read their own; staff and admins create and correct them (optimistic locking). In
+  production these would be synchronized from the Student Information System.
 
 ## 2. Request templates — `request-service` (phase 3)
 
@@ -51,7 +52,7 @@ Admins define what can be requested. See [ADR 0004](adr/0004-request-workflow.md
 - Saving checks that every department exists in org-service, field keys are unique and select fields
   have options. Updates replace the whole definition and use optimistic locking.
 - Requesters only see active templates for their audience.
-- Template attachments (for example a blank form copied onto every request) arrive with files in phase 6.
+- Later: template attachments (for example a blank form copied onto every request).
 
 ## 3. Submitting requests — `request-service` (phase 3)
 
@@ -107,16 +108,35 @@ Emails go to the requester or to the department's shared mailbox (set on the dep
 - Admins can list a request's notifications with their delivery status and retry failed ones.
 - Reminders are claimed atomically, so running several instances never sends one twice.
 
-## 6. Documents and exports — `document-service` (phase 6)
+## 6. Documents and exports — `document-service`, `request-service` (phase 6)
 
-- **Fillable forms**: admins upload `.docx` templates with `${placeholder}` fields and define extra
-  runtime fields. Users download the form pre-filled with their profile data and the values they
-  type. Downloads are rate-limited.
-- Numbers can be rendered as Vietnamese words (for amounts on forms).
-- Export a single request to `.docx`, a filtered request list to `.xlsx`, and statistics to `.xlsx`.
-- **Bulk file download**: staff pick a filter, preview the file count and total size, then start a
-  background job that zips all attachments, split into parts. The UI polls job status; finished
-  archives expire after 3 days.
+See [ADR 0007](adr/0007-files-and-documents.md).
+
+- **Files on S3**: the browser asks document-service for an upload, PUTs the file straight to storage
+  with a pre-signed URL (15 minutes), then confirms; the service checks the stored size and type. PDFs,
+  images and Office documents up to 20 MB. Files never travel through the services.
+- Submissions and step completions refer to uploaded files by id. request-service asks document-service
+  whether each file exists, belongs to the caller, has finished uploading and is not already used, and
+  whether image fields got images. Once the request is submitted, the files are attached to it.
+- **Who may download** a file: its uploader until it is attached; then the requester, staff of any
+  department with a step on the request, and admins. Downloads are pre-signed URLs that keep the original
+  (Vietnamese) file name.
+- **Fillable forms**: admins upload `.docx` templates with `${placeholder}` fields and define the extra
+  fields users type (text, number, date). Users download the form filled with their name, email, student
+  profile, today's date and their values; a number field `x` also fills `${x_words}` with the amount in
+  Vietnamese words ("Một triệu hai trăm nghìn"). Placeholders split across Word formatting runs, in tables,
+  headers and footers all work. The gateway limits form downloads to 1 per second per user (bursts of 5).
+- **Exports** (request-service): a single request as `.docx` (values, steps, history; for anyone who may
+  see the request); the filtered request list as `.xlsx` (up to 50,000 rows, streamed); statistics by
+  template and by department (totals, outcomes, overdue, average days to complete, on-time rate) as JSON
+  or `.xlsx`. Staff statistics always cover their own department.
+- **Bulk file download**: staff select requests (for example a filtered list), preview how many requests,
+  files and bytes they may download, then start a background job that zips the attachments, one folder
+  per request code, with repeated file names numbered. The archive is streamed to S3 in 8 MB parts, so
+  memory use does not grow with its size. Limits: 500 requests, 2,000 files, 2 GB. The client polls the
+  job; when ready it returns a download URL. Only the person who started a job (or an admin) can see it.
+  Archives expire after 3 days, and a job left running by a crashed instance is picked up again after
+  30 minutes.
 - Housekeeping jobs delete abandoned uploads (> 24 h) and expired archives.
 
 ## 7. Frontend — Vue 3 + TypeScript (phase 7)
