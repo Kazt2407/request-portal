@@ -101,6 +101,25 @@ services:
       timeout: 3s
       retries: 10
 
+  # S3-compatible object storage for uploaded files and generated documents (S3 itself in AWS).
+  storage:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: portal
+      RUSTFS_SECRET_KEY: portal-storage-secret
+      RUSTFS_VOLUMES: /data
+      RUSTFS_CONSOLE_ENABLE: "true"
+    ports:
+      - "9010:9000" # S3 API
+      - "9011:9001" # web console: http://localhost:9011/rustfs/console/
+    volumes:
+      - storage-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   # Optional: docker compose --profile observability up -d
   # Grafana (http://localhost:3000) with Tempo for traces and Prometheus for metrics, fed over OTLP.
   # Start the services with OTEL_EXPORT_ENABLED=true to send them data.
@@ -117,3 +136,4 @@ services:
 
 volumes:
   postgres-data:
+  storage-data:

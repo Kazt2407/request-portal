@@ -1,0 +1,29 @@
+package dev.requestportal.document.storage;
+
+import java.time.Duration;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.util.StringUtils;
+
+/**
+ * @param endpoint        S3 endpoint this service calls; empty for AWS
+ * @param publicEndpoint  endpoint written into pre-signed URLs, reachable by clients; empty for AWS
+ * @param accessKey       static key for S3-compatible storage; empty to use the AWS credential chain
+ * @param createBucket    create the bucket on startup if missing (local development)
+ * @param urlTtl          how long pre-signed upload and download URLs stay valid
+ */
+@ConfigurationProperties("portal.storage")
+public record StorageProperties(
+        String endpoint,
+        String publicEndpoint,
+        String region,
+        String bucket,
+        String accessKey,
+        String secretKey,
+        boolean pathStyleAccess,
+        boolean createBucket,
+        Duration urlTtl) {
+
+    boolean hasStaticCredentials() {
+        return StringUtils.hasText(accessKey) && StringUtils.hasText(secretKey);
+    }
+}

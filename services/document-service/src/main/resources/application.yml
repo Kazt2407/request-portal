@@ -12,6 +12,23 @@ spring:
       ddl-auto: validate
   flyway:
     locations: classpath:db/migration
+  data:
+    web:
+      pageable:
+        max-page-size: 100
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9094}
+    consumer:
+      group-id: document-service
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    producer: # for the dead-letter topic
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    listener:
+      observation-enabled: true
   security:
     oauth2:
       resourceserver:
@@ -19,6 +36,44 @@ spring:
           issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/request-portal}
           jwk-set-uri: ${KEYCLOAK_URL:http://localhost:8180}/realms/request-portal/protocol/openid-connect/certs
           audiences: request-portal-api
+
+portal:
+  storage:
+    # S3 endpoint this service calls, and the one put into pre-signed URLs for clients. Both empty in AWS.
+    endpoint: ${STORAGE_ENDPOINT:http://localhost:9010}
+    public-endpoint: ${STORAGE_PUBLIC_ENDPOINT:http://localhost:9010}
+    region: ${STORAGE_REGION:ap-southeast-1}
+    bucket: ${STORAGE_BUCKET:request-portal}
+    # Local development keys from infra/docker-compose.yml; leave empty to use the AWS credential chain.
+    access-key: ${STORAGE_ACCESS_KEY:portal}
+    secret-key: ${STORAGE_SECRET_KEY:portal-storage-secret}
+    # Bucket in the path (S3-compatible stores) rather than the host name (AWS).
+    path-style-access: ${STORAGE_PATH_STYLE_ACCESS:true}
+    create-bucket: ${STORAGE_CREATE_BUCKET:true}
+    url-ttl: 15m
+  files:
+    max-size: 20MB
+    # Uploads never attached to a request are deleted after this long.
+    unattached-ttl: 24h
+    cleanup-interval: 1h
+  bulk-downloads:
+    max-requests: 500
+    max-files: 2000
+    max-size: 2GB
+    # Archives are deleted this long after they are ready (also an S3 lifecycle rule in AWS).
+    ttl: 3d
+    poll-interval: 2s
+    # A job still running after this long is assumed abandoned (crashed instance) and retried.
+    stale-after: 30m
+  org-service:
+    url: ${ORG_SERVICE_URL:http://localhost:8081}
+  # Time zone for "today" on generated forms.
+  time-zone: Asia/Ho_Chi_Minh
+  events:
+    topic: request-events
+    dead-letter-topic: request-events.document-service.DLT
+    partitions: 3
+    replicas: 1
 
 server:
   port: 8083

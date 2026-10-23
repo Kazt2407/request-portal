@@ -3,7 +3,8 @@ package dev.requestportal.document;
 import org.springframework.boot.SpringApplication;
 
 /**
- * Runs the service locally against a throwaway PostgreSQL container: {@code ./mvnw -pl services/document-service spring-boot:test-run}.
+ * Runs the service locally against throwaway PostgreSQL, Kafka and RustFS containers:
+ * {@code ./mvnw -pl services/document-service spring-boot:test-run}.
  */
 public class TestDocumentServiceApplication {
 
