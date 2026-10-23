@@ -89,7 +89,7 @@ class GatewayApplicationTests {
         List<String> routeIds = routeLocator.getRoutes().map(Route::getId).collectList().block();
 
         assertThat(routeIds).containsExactlyInAnyOrder(
-                "org-service", "request-service", "document-service", "notification-service");
+                "org-service", "request-service", "form-documents", "document-service", "notification-service");
     }
 
     @Test
