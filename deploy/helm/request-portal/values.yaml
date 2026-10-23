@@ -24,6 +24,19 @@ infrastructure:
   mail:
     host: smtp
     port: 25
+  # Object storage for document-service. Empty endpoints mean AWS S3, with credentials from EKS Pod
+  # Identity; for an S3-compatible store set both endpoints and staticCredentials.
+  storage:
+    endpoint: ""
+    # Written into pre-signed URLs, so browsers must be able to reach it.
+    publicEndpoint: ""
+    region: ap-southeast-1
+    bucket: request-portal-documents
+    pathStyleAccess: false
+    # Read the storage-access-key and storage-secret-key secrets instead of the AWS credential chain.
+    staticCredentials: false
+    # Create the bucket on startup (local development only).
+    createBucket: false
   # Public URL of the web app, used for links in emails.
   portalUrl: https://portal.example.edu
 
@@ -47,6 +60,9 @@ secrets:
     notification-db-password: ""
     keycloak-admin-client-secret: ""
     notification-client-secret: ""
+    # Only with infrastructure.storage.staticCredentials.
+    storage-access-key: ""
+    storage-secret-key: ""
 
 # Settings every service shares; a service's own block overrides them.
 defaults:
@@ -69,6 +85,10 @@ services:
     rateLimit:
       perSecond: 10
       burst: 30
+    # Filled-in form downloads render documents, so they get a tighter limit of their own.
+    formRateLimit:
+      perSecond: 1
+      burst: 5
     autoscaling:
       enabled: true
       minReplicas: 2

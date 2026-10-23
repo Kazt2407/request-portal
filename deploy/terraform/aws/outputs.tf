@@ -37,6 +37,7 @@ output "helm_infrastructure_values" {
       kafkaBootstrapServers = aws_msk_cluster.kafka.bootstrap_brokers_tls
       redis                 = { host = aws_elasticache_replication_group.cache.primary_endpoint_address, port = 6379 }
       mail                  = { host = "email-smtp.${var.region}.amazonaws.com", port = 587 }
+      storage               = { region = var.region, bucket = aws_s3_bucket.documents.bucket }
     }
   })
 }

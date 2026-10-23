@@ -4,6 +4,15 @@
 {{- $service := mergeOverwrite (deepCopy $root.Values.defaults) $own }}
 {{- $ctx := dict "root" $root "name" $name }}
 ---
+# One identity per service; in EKS, Pod Identity maps document-service's to its S3 role (deploy/terraform).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "request-portal.serviceName" $ctx }}
+  labels:
+    {{- include "request-portal.labels" $ctx | nindent 4 }}
+automountServiceAccountToken: false
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -26,6 +35,7 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      serviceAccountName: {{ include "request-portal.serviceName" $ctx }}
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -75,14 +85,53 @@ spec:
               value: {{ $service.rateLimit.perSecond | quote }}
             - name: RATE_LIMIT_BURST
               value: {{ $service.rateLimit.burst | quote }}
+            - name: FORM_RATE_LIMIT_PER_SECOND
+              value: {{ $service.formRateLimit.perSecond | quote }}
+            - name: FORM_RATE_LIMIT_BURST
+              value: {{ $service.formRateLimit.burst | quote }}
             {{- range $target := list "org-service" "request-service" "document-service" "notification-service" }}
             - name: {{ $target | upper | replace "-" "_" }}_URL
               value: {{ include "request-portal.url" (dict "root" $root "name" $target) | quote }}
             {{- end }}
             {{- end }}
-            {{- if has $name (list "request-service" "notification-service") }}
+            {{- if has $name (list "request-service" "document-service" "notification-service") }}
             - name: ORG_SERVICE_URL
               value: {{ include "request-portal.url" (dict "root" $root "name" "org-service") | quote }}
+            {{- end }}
+            {{- if eq $name "request-service" }}
+            - name: DOCUMENT_SERVICE_URL
+              value: {{ include "request-portal.url" (dict "root" $root "name" "document-service") | quote }}
+            {{- end }}
+            {{- if eq $name "document-service" }}
+            {{- with $infra.storage }}
+            - name: STORAGE_ENDPOINT
+              value: {{ .endpoint | quote }}
+            - name: STORAGE_PUBLIC_ENDPOINT
+              value: {{ .publicEndpoint | quote }}
+            - name: STORAGE_REGION
+              value: {{ .region | quote }}
+            - name: STORAGE_BUCKET
+              value: {{ .bucket | quote }}
+            - name: STORAGE_PATH_STYLE_ACCESS
+              value: {{ .pathStyleAccess | quote }}
+            - name: STORAGE_CREATE_BUCKET
+              value: {{ .createBucket | quote }}
+            {{- if .staticCredentials }}
+            {{- range $variable, $key := dict "STORAGE_ACCESS_KEY" "storage-access-key" "STORAGE_SECRET_KEY" "storage-secret-key" }}
+            - name: {{ $variable }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "request-portal.secretName" $root }}
+                  key: {{ $key }}
+            {{- end }}
+            {{- else }}
+            # Empty keys make document-service use the AWS credential chain (Pod Identity).
+            - name: STORAGE_ACCESS_KEY
+              value: ""
+            - name: STORAGE_SECRET_KEY
+              value: ""
+            {{- end }}
+            {{- end }}
             {{- end }}
             {{- if eq $name "org-service" }}
             - name: KEYCLOAK_ADMIN_CLIENT_SECRET

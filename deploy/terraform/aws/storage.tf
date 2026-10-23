@@ -87,10 +87,11 @@ resource "aws_iam_role_policy" "document_service" {
   policy = data.aws_iam_policy_document.documents_access.json
 }
 
+# The Helm chart names the service account <release>-document-service; the release is request-portal.
 resource "aws_eks_pod_identity_association" "document_service" {
   cluster_name    = module.eks.cluster_name
   namespace       = "request-portal"
-  service_account = "document-service"
+  service_account = "request-portal-document-service"
   role_arn        = aws_iam_role.document_service.arn
 }
 

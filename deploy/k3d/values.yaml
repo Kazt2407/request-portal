@@ -19,6 +19,14 @@ infrastructure:
   mail:
     host: host.k3d.internal
     port: 1025
+  # RustFS from docker compose: pods call it through the host, browsers through localhost.
+  storage:
+    endpoint: http://host.k3d.internal:9010
+    publicEndpoint: http://localhost:9010
+    bucket: request-portal
+    pathStyleAccess: true
+    staticCredentials: true
+    createBucket: true
   portalUrl: http://localhost:5173
 
 # The optional observability stack: docker compose --profile observability up -d
@@ -36,6 +44,8 @@ secrets:
     notification-db-password: notification_service
     keycloak-admin-client-secret: org-service-dev-secret
     notification-client-secret: notification-service-dev-secret
+    storage-access-key: portal
+    storage-secret-key: portal-storage-secret
 
 # Smaller CPU requests to fit a laptop; one replica each by default, the autoscalers add more under load.
 defaults:
