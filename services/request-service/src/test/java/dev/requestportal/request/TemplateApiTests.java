@@ -138,7 +138,7 @@ class TemplateApiTests extends ApiTestSupport {
     }
 
     @Test
-    void onlyAdminsManageTemplates() {
+    void onlyAdminsManageTemplatesAndOnlyStaffListThemAll() {
         assertThat(mvc.post().uri("/api/v1/templates")
                 .header(AUTHORIZATION, bearer(ACAD_STAFF))
                 .contentType(APPLICATION_JSON)
@@ -146,6 +146,7 @@ class TemplateApiTests extends ApiTestSupport {
                 .hasStatus(HttpStatus.FORBIDDEN);
         assertThat(mvc.get().uri("/api/v1/templates").header(AUTHORIZATION, bearer(AN)))
                 .hasStatus(HttpStatus.FORBIDDEN);
+        assertThat(mvc.get().uri("/api/v1/templates").header(AUTHORIZATION, bearer(ACAD_STAFF))).hasStatusOk();
     }
 
     private static String simpleTemplate(String title, String audience, String status) {

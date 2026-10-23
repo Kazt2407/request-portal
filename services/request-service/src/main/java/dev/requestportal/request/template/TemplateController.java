@@ -25,8 +25,9 @@ class TemplateController {
         this.templateService = templateService;
     }
 
+    /** All templates; staff use the list to filter their queue by template. */
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('STAFF', 'ADMIN')")
     List<TemplateSummary> list(@RequestParam(required = false) TemplateStatus status) {
         return templateService.list(status);
     }
